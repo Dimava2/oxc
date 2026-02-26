@@ -71,4 +71,14 @@ const answer=1
     expect(result.code).toMatchSnapshot();
     expect(result.errors).toStrictEqual([]);
   });
+
+  it("should format template-only vue files in staged internal mode", async () => {
+    const input = '<template>   <Comp :label="`${ foo }`">{{msg}}</Comp> </template>\n';
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
 });

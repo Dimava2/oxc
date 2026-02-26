@@ -23,3 +23,17 @@ const answer=1
 
 --------------------"
 `;
+
+exports[`vue_internal > should format template-only files when internal vue mode is enabled 1`] = `
+"--- FILE -----------
+template-only.vue
+--- BEFORE ---------
+<template>   <Comp :label="\`\${ foo }\`">{{msg}}</Comp> </template>
+
+--- AFTER ----------
+<template>
+  <Comp :label="\`\${foo}\`">{{ msg }}</Comp>
+</template>
+
+--------------------"
+`;

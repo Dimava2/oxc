@@ -44,3 +44,10 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should format script bloc
 </template>
 "
 `;
+
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format template-only vue files in staged internal mode 1`] = `
+"<template>
+  <Comp :label="\`\${foo}\`">{{ msg }}</Comp>
+</template>
+"
+`;

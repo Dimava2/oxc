@@ -9,4 +9,9 @@ describe("vue_internal", () => {
     const snapshot = await runWriteModeAndSnapshot(fixturesDir, ["input.vue"]);
     expect(snapshot).toMatchSnapshot();
   });
+
+  it("should format template-only files when internal vue mode is enabled", async () => {
+    const snapshot = await runWriteModeAndSnapshot(fixturesDir, ["template-only.vue"]);
+    expect(snapshot).toMatchSnapshot();
+  });
 });
