@@ -4,6 +4,9 @@ use std::path::Path;
 
 use serde_json::Value;
 use tracing::instrument;
+#[cfg(feature = "vue_oxc_toolkit_spike")]
+#[cfg(feature = "napi")]
+use tracing::debug;
 
 use oxc_allocator::AllocatorPool;
 use oxc_diagnostics::OxcDiagnostic;
@@ -212,6 +215,18 @@ impl SourceFormatter {
         parser_name: &str,
         mut external_options: Value,
     ) -> Result<String, OxcDiagnostic> {
+        #[cfg(feature = "vue_oxc_toolkit_spike")]
+        if parser_name == "vue" && std::env::var_os("OXFMT_VUE_OXC_TOOLKIT_SPIKE").is_some() {
+            let report = super::vue_oxc_toolkit_spike::parse_report(source_text);
+            if report.panicked || report.error_count > 0 {
+                debug!(
+                    panicked = report.panicked,
+                    error_count = report.error_count,
+                    "vue_oxc_toolkit spike parse returned errors; continuing with external formatter"
+                );
+            }
+        }
+
         let external_formatter = self
             .external_formatter
             .as_ref()

@@ -61,6 +61,8 @@ tower-lsp-server = { workspace = true, features = ["proposed"] }
 # NAPI dependencies (conditional on napi feature)
 napi = { workspace = true, features = ["async", "serde-json"], optional = true }
 napi-derive = { workspace = true, optional = true }
+vue_oxc_toolkit = { version = "0.8.0", optional = true }
+oxc_allocator_registry = { package = "oxc_allocator", version = "0.115.0", optional = true }
 
 [build-dependencies]
 napi-build = { workspace = true }
@@ -88,3 +90,4 @@ default = ["napi"]
 napi = ["dep:napi", "dep:napi-derive"]
 allocator = ["dep:mimalloc-safe"]
 detect_code_removal = ["oxc_formatter/detect_code_removal"]
+vue_oxc_toolkit_spike = ["dep:vue_oxc_toolkit", "dep:oxc_allocator_registry"]

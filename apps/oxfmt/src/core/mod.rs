@@ -6,6 +6,8 @@ pub mod utils;
 
 #[cfg(feature = "napi")]
 mod external_formatter;
+#[cfg(feature = "vue_oxc_toolkit_spike")]
+mod vue_oxc_toolkit_spike;
 
 #[cfg(feature = "napi")]
 pub use config::resolve_options_from_value;
