@@ -382,6 +382,13 @@ impl SourceFormatter {
             output.replace_range(block.content_start..block.content_end, &replacement);
         }
 
+        let template_blocks = super::vue_sfc::parse_template_blocks(&output);
+        for block in template_blocks.iter().rev() {
+            let original = &output[block.content_start..block.content_end];
+            let formatted = format_vue_template_block_mvp(original, line_ending);
+            output.replace_range(block.content_start..block.content_end, &formatted);
+        }
+
         Ok(output)
     }
 
@@ -473,9 +480,65 @@ fn wrap_formatted_vue_script(formatted: &str, line_ending: &str, indent: Option<
     output
 }
 
+fn format_vue_template_block_mvp(content: &str, line_ending: &str) -> String {
+    let normalized = normalize_vue_interpolations(content);
+    trim_template_trailing_whitespace(&normalized, line_ending)
+}
+
+fn normalize_vue_interpolations(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut cursor = 0usize;
+
+    while let Some(start_rel) = input[cursor..].find("{{") {
+        let start = cursor + start_rel;
+        output.push_str(&input[cursor..start]);
+        output.push_str("{{");
+
+        let expr_start = start + 2;
+        let Some(end_rel) = input[expr_start..].find("}}") else {
+            output.push_str(&input[expr_start..]);
+            return output;
+        };
+
+        let expr_end = expr_start + end_rel;
+        let expr = input[expr_start..expr_end].trim();
+        if !expr.is_empty() {
+            output.push(' ');
+            output.push_str(expr);
+            output.push(' ');
+        }
+        output.push_str("}}");
+
+        cursor = expr_end + 2;
+    }
+
+    output.push_str(&input[cursor..]);
+    output
+}
+
+fn trim_template_trailing_whitespace(input: &str, line_ending: &str) -> String {
+    let has_trailing_newline = input.ends_with('\n') || input.ends_with('\r');
+
+    let mut output = String::new();
+    for (idx, line) in input.lines().enumerate() {
+        if idx > 0 {
+            output.push_str(line_ending);
+        }
+        output.push_str(line.trim_end_matches([' ', '\t']));
+    }
+
+    if has_trailing_newline {
+        output.push_str(line_ending);
+    }
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{source_type_from_vue_script_lang, wrap_formatted_vue_script};
+    use super::{
+        format_vue_template_block_mvp, source_type_from_vue_script_lang, wrap_formatted_vue_script,
+    };
 
     #[test]
     fn test_source_type_from_vue_script_lang() {
@@ -500,5 +563,12 @@ mod tests {
 
         let wrapped = wrap_formatted_vue_script(code, "\n", Some("  "));
         assert_eq!(wrapped, "\n  const a = 1;\n  const b = 2;\n");
+    }
+
+    #[test]
+    fn test_format_vue_template_block_mvp() {
+        let source = "  <div>{{a+b}}</div>   \n  <p>{{  msg  }}</p>\n";
+        let formatted = format_vue_template_block_mvp(source, "\n");
+        assert_eq!(formatted, "  <div>{{ a+b }}</div>\n  <p>{{ msg }}</p>\n");
     }
 }
