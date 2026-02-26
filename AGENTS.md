@@ -325,9 +325,10 @@ For human contributors see `CONTRIBUTING.md` and [oxc.rs](https://oxc.rs/docs/co
 
 ## Cursor Cloud specific instructions
 
-### System dependency
+### System dependencies
 
-The Cloud VM's Clang toolchain is missing `libstdc++-14-dev`, which is required by `libmimalloc-sys2` (used by `mimalloc-safe`). The update script installs it automatically, but if you see a CMake "C++ compiler broken" error mentioning `-lstdc++`, run `sudo apt-get install -y libstdc++-14-dev`.
+- The Cloud VM's Clang toolchain is missing `libstdc++-14-dev`, which is required by `libmimalloc-sys2` (used by `mimalloc-safe`). The update script installs it automatically, but if you see a CMake "C++ compiler broken" error mentioning `-lstdc++`, run `sudo apt-get install -y libstdc++-14-dev`.
+- Node.js must match `.node-version` (currently 24.12.0). The update script uses `nvm` to install and activate it. If Node is wrong, the `oxc_codegen` snapshot test `stacktrace_is_correct` will fail. Run `nvm use 24.12.0` to fix.
 
 ### Key commands
 
