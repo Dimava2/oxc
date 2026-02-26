@@ -6,6 +6,7 @@ exports[`experimentalVueInternal differential report > produces differential sum
   "equalToPrettier": 3,
   "errorSample": [],
   "errors": 0,
+  "fixtureSource": "edge-only",
   "fixtures": 3,
   "mismatchKinds": {
     "scriptOnly": 0,
@@ -15,6 +16,7 @@ exports[`experimentalVueInternal differential report > produces differential sum
   },
   "mismatchSample": [],
   "mismatches": 0,
+  "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;
 
@@ -24,6 +26,7 @@ exports[`experimentalVueInternal differential report > produces differential sum
   "equalToPrettier": 3,
   "errorSample": [],
   "errors": 0,
+  "fixtureSource": "edge-only",
   "fixtures": 3,
   "mismatchKinds": {
     "scriptOnly": 0,
@@ -33,5 +36,6 @@ exports[`experimentalVueInternal differential report > produces differential sum
   },
   "mismatchSample": [],
   "mismatches": 0,
+  "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;

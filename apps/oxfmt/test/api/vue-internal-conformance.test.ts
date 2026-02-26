@@ -9,10 +9,11 @@ const FIXTURES_DIR = join(import.meta.dirname, "../../prettier-fixtures");
 const MAX_INTERNAL_FIXTURES = 25;
 
 describe("experimentalVueInternal differential report", () => {
-  const vueFixtures = collectFixtures(".vue", [
+  const prettierFixtures = collectFixtures(".vue", [
     "vue/range/example.vue",
     "vue/multiparser/lang-tsx.vue",
-  ])
+  ]);
+  const vueFixtures = prettierFixtures
     .filter(({ name }) => name.startsWith("vue/"))
     .slice(0, MAX_INTERNAL_FIXTURES);
 
@@ -89,6 +90,7 @@ describe("experimentalVueInternal differential report", () => {
     }
 
     const summary = {
+      fixtureSource: prettierFixtures.length > 0 ? "edge+prettier" : "edge-only",
       fixtures: records.length,
       errors: errors.length,
       equalToPrettier: records.length - mismatches.length,
@@ -97,6 +99,10 @@ describe("experimentalVueInternal differential report", () => {
       mismatchKinds,
       mismatchSample: mismatches.slice(0, 10),
       errorSample: errors.slice(0, 10),
+      note:
+        prettierFixtures.length > 0
+          ? null
+          : "Run `pnpm download-prettier-fixtures` in apps/oxfmt for broader differential coverage",
     };
 
     expect(summary.errors).toBe(0);
