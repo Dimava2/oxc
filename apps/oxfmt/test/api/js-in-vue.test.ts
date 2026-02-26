@@ -81,4 +81,40 @@ const answer=1
     expect(result.code).toMatchSnapshot();
     expect(result.errors).toStrictEqual([]);
   });
+
+  it("should fallback to external formatter for unsupported custom SFC blocks", async () => {
+    const input = `
+<template><div>{{count}}</div></template>
+<i18n lang="yaml">
+message: hello
+</i18n>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for unsupported complex event bindings", async () => {
+    const input = `
+<script setup lang="ts">
+let x = 1;
+</script>
+<template>
+  <div @click="if (x === (1 as number)) { x += 1; }">{{x}}</div>
+</template>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
 });
