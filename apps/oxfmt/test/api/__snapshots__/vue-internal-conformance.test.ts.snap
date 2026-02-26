@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`experimentalVueInternal differential report > report summary > produces differential summary {"printWidth":80} 1`] = `
+exports[`experimentalVueInternal differential report > report summary > produces edge-only differential summary {"printWidth":80} 1`] = `
 {
   "changedFromInput": 8,
   "equalToPrettier": 8,
@@ -20,7 +20,7 @@ exports[`experimentalVueInternal differential report > report summary > produces
 }
 `;
 
-exports[`experimentalVueInternal differential report > report summary > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
+exports[`experimentalVueInternal differential report > report summary > produces edge-only differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
 {
   "changedFromInput": 8,
   "equalToPrettier": 8,

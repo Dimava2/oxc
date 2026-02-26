@@ -6,8 +6,11 @@ import { format } from "../../dist/index.js";
 
 // NOTE: Fixtures can be downloaded by `pnpm download-prettier-fixtures`
 const FIXTURES_DIR = join(import.meta.dirname, "../../prettier-fixtures");
-const MAX_INTERNAL_FIXTURES = 25;
 const USE_PRETTIER_FIXTURES = process.env.OXFMT_VUE_CONFORMANCE_USE_PRETTIER_FIXTURES === "1";
+const MAX_INTERNAL_FIXTURES = Number.parseInt(
+  process.env.OXFMT_VUE_CONFORMANCE_MAX_FIXTURES ?? "0",
+  10,
+);
 
 describe("experimentalVueInternal differential report", () => {
   const prettierFixtures = USE_PRETTIER_FIXTURES
@@ -16,9 +19,10 @@ describe("experimentalVueInternal differential report", () => {
         "vue/multiparser/lang-tsx.vue",
       ])
     : [];
-  const vueFixtures = prettierFixtures
-    .filter(({ name }) => name.startsWith("vue/"))
-    .slice(0, MAX_INTERNAL_FIXTURES);
+  let vueFixtures = prettierFixtures.filter(({ name }) => name.startsWith("vue/"));
+  if (MAX_INTERNAL_FIXTURES > 0) {
+    vueFixtures = vueFixtures.slice(0, MAX_INTERNAL_FIXTURES);
+  }
 
   if (USE_PRETTIER_FIXTURES && prettierFixtures.length === 0) {
     // eslint-disable-next-line no-console
@@ -27,8 +31,7 @@ describe("experimentalVueInternal differential report", () => {
     );
   }
 
-  const activeFixtures = vueFixtures;
-  activeFixtures.push(
+  const edgeFixtures: TestCase[] = [
     {
       name: "edge/template-interpolation-spacing.vue",
       content: `<template>   <div>{{answer}}</div> </template>\n`,
@@ -72,7 +75,8 @@ describe("experimentalVueInternal differential report", () => {
 </template>
 `,
     },
-  );
+  ];
+  const activeFixtures = [...vueFixtures, ...edgeFixtures];
 
   describe("report summary", () => {
     it.each([
@@ -82,75 +86,27 @@ describe("experimentalVueInternal differential report", () => {
         vueIndentScriptAndStyle: true,
         singleQuote: true,
       },
-    ])("produces differential summary %j", async (options) => {
-      const records = await Promise.all(
-        activeFixtures.map(async ({ name, content }) => {
-          const [internalResult, prettierResult] = await compareWithPrettierUsingInternalMode(
-            name,
-            content,
-            options,
-          );
-          return {
-            name,
-            internalResult,
-            prettierResult,
-            equalsPrettier: internalResult === prettierResult,
-            changedFromInput: internalResult !== content,
-            isError: internalResult === "ERROR",
-            templateParity:
-              internalResult !== "ERROR" &&
-              prettierResult !== "ERROR" &&
-              compareTagContents(internalResult, prettierResult, "template"),
-            scriptParity:
-              internalResult !== "ERROR" &&
-              prettierResult !== "ERROR" &&
-              compareTagContents(internalResult, prettierResult, "script"),
-          };
-        }),
-      );
-
-      const mismatches = records.filter((record) => !record.equalsPrettier).map((record) => record.name);
-      const errors = records.filter((record) => record.isError).map((record) => record.name);
-      const changedFromInput = records.filter((record) => record.changedFromInput).length;
-      const mismatchKinds = {
-        templateOnly: 0,
-        scriptOnly: 0,
-        templateAndScript: 0,
-        unresolved: 0,
-      };
-      for (const record of records) {
-        if (record.equalsPrettier || record.isError) continue;
-
-        if (record.templateParity === false && record.scriptParity === true) {
-          mismatchKinds.templateOnly += 1;
-        } else if (record.templateParity === true && record.scriptParity === false) {
-          mismatchKinds.scriptOnly += 1;
-        } else if (record.templateParity === false && record.scriptParity === false) {
-          mismatchKinds.templateAndScript += 1;
-        } else {
-          mismatchKinds.unresolved += 1;
-        }
-      }
-
-      const summary = {
-        fixtureSource: prettierFixtures.length > 0 ? "edge+prettier" : "edge-only",
-        fixtures: records.length,
-        errors: errors.length,
-        equalToPrettier: records.length - mismatches.length,
-        mismatches: mismatches.length,
-        changedFromInput,
-        mismatchKinds,
-        mismatchSample: mismatches.slice(0, 10),
-        errorSample: errors.slice(0, 10),
-        note:
-          prettierFixtures.length > 0
-            ? null
-            : "Set OXFMT_VUE_CONFORMANCE_USE_PRETTIER_FIXTURES=1 and run `pnpm download-prettier-fixtures` in apps/oxfmt for broader differential coverage",
-      };
-
+    ])("produces edge-only differential summary %j", async (options) => {
+      const summary = await buildSummary(edgeFixtures, options, "edge-only");
       expect(summary.errors).toBe(0);
       expect(summary).toMatchSnapshot();
     });
+
+    if (USE_PRETTIER_FIXTURES) {
+      it.each([
+        { printWidth: 80 },
+        {
+          printWidth: 100,
+          vueIndentScriptAndStyle: true,
+          singleQuote: true,
+        },
+      ])("produces edge+prettier differential summary %j", async (options) => {
+        const summary = await buildSummary(activeFixtures, options, "edge+prettier");
+        expect(summary.errors).toBe(0);
+        expect(summary.fixtureSource).toBe("edge+prettier");
+        expect(summary.fixtures).toBeGreaterThan(edgeFixtures.length);
+      });
+    }
   });
 });
 
@@ -175,6 +131,77 @@ function collectFixtures(ext: string, excludes: string[] = []): TestCase[] {
   }
 
   return results.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function buildSummary(
+  fixtures: TestCase[],
+  options: object,
+  fixtureSource: "edge-only" | "edge+prettier",
+) {
+  const records = await Promise.all(
+    fixtures.map(async ({ name, content }) => {
+      const [internalResult, prettierResult] = await compareWithPrettierUsingInternalMode(
+        name,
+        content,
+        options,
+      );
+      return {
+        name,
+        internalResult,
+        prettierResult,
+        equalsPrettier: internalResult === prettierResult,
+        changedFromInput: internalResult !== content,
+        isError: internalResult === "ERROR",
+        templateParity:
+          internalResult !== "ERROR" &&
+          prettierResult !== "ERROR" &&
+          compareTagContents(internalResult, prettierResult, "template"),
+        scriptParity:
+          internalResult !== "ERROR" &&
+          prettierResult !== "ERROR" &&
+          compareTagContents(internalResult, prettierResult, "script"),
+      };
+    }),
+  );
+
+  const mismatches = records.filter((record) => !record.equalsPrettier).map((record) => record.name);
+  const errors = records.filter((record) => record.isError).map((record) => record.name);
+  const changedFromInput = records.filter((record) => record.changedFromInput).length;
+  const mismatchKinds = {
+    templateOnly: 0,
+    scriptOnly: 0,
+    templateAndScript: 0,
+    unresolved: 0,
+  };
+  for (const record of records) {
+    if (record.equalsPrettier || record.isError) continue;
+
+    if (record.templateParity === false && record.scriptParity === true) {
+      mismatchKinds.templateOnly += 1;
+    } else if (record.templateParity === true && record.scriptParity === false) {
+      mismatchKinds.scriptOnly += 1;
+    } else if (record.templateParity === false && record.scriptParity === false) {
+      mismatchKinds.templateAndScript += 1;
+    } else {
+      mismatchKinds.unresolved += 1;
+    }
+  }
+
+  return {
+    fixtureSource,
+    fixtures: records.length,
+    errors: errors.length,
+    equalToPrettier: records.length - mismatches.length,
+    mismatches: mismatches.length,
+    changedFromInput,
+    mismatchKinds,
+    mismatchSample: mismatches.slice(0, 10),
+    errorSample: errors.slice(0, 10),
+    note:
+      fixtureSource === "edge+prettier"
+        ? null
+        : "Set OXFMT_VUE_CONFORMANCE_USE_PRETTIER_FIXTURES=1 and run `pnpm download-prettier-fixtures` in apps/oxfmt for broader differential coverage",
+  };
 }
 
 async function compareWithPrettierUsingInternalMode(
