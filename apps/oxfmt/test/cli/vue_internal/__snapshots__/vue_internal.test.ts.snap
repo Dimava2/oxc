@@ -17,7 +17,9 @@ const answer=1
   import z from "z";
   const answer = 1;
 </script>
-<template>   <div>{{ answer }}</div></template>
+<template>
+  <div>{{ answer }}</div>
+</template>
 
 --------------------"
 `;

@@ -334,9 +334,6 @@ impl SourceFormatter {
         }
 
         let script_blocks = super::vue_sfc::parse_script_blocks(source_text);
-        if script_blocks.is_empty() {
-            return Ok(source_text.to_string());
-        }
 
         let vue_indent_script_and_style = external_options
             .as_object()
@@ -385,7 +382,16 @@ impl SourceFormatter {
         let template_blocks = super::vue_sfc::parse_template_blocks(&output);
         for block in template_blocks.iter().rev() {
             let original = &output[block.content_start..block.content_end];
-            let formatted = format_vue_template_block_mvp(original, line_ending);
+            let formatted = format_vue_template_block_mvp(
+                original,
+                line_ending,
+                if format_options.indent_style.is_tab() {
+                    "\t".to_string()
+                } else {
+                    " ".repeat(usize::from(format_options.indent_width.value()))
+                }
+                .as_str(),
+            );
             output.replace_range(block.content_start..block.content_end, &formatted);
         }
 
@@ -480,8 +486,10 @@ fn wrap_formatted_vue_script(formatted: &str, line_ending: &str, indent: Option<
     output
 }
 
-fn format_vue_template_block_mvp(content: &str, line_ending: &str) -> String {
+fn format_vue_template_block_mvp(content: &str, line_ending: &str, indent: &str) -> String {
     let normalized = normalize_vue_interpolations(content);
+    let normalized = normalize_template_literal_placeholders(&normalized);
+    let normalized = normalize_single_root_template_layout(&normalized, line_ending, indent);
     trim_template_trailing_whitespace(&normalized, line_ending)
 }
 
@@ -513,6 +521,49 @@ fn normalize_vue_interpolations(input: &str) -> String {
     }
 
     output.push_str(&input[cursor..]);
+    output
+}
+
+fn normalize_template_literal_placeholders(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut cursor = 0usize;
+
+    while let Some(start_rel) = input[cursor..].find("${") {
+        let start = cursor + start_rel;
+        output.push_str(&input[cursor..start]);
+        output.push_str("${");
+
+        let expr_start = start + 2;
+        let Some(end_rel) = input[expr_start..].find('}') else {
+            output.push_str(&input[expr_start..]);
+            return output;
+        };
+
+        let expr_end = expr_start + end_rel;
+        output.push_str(input[expr_start..expr_end].trim());
+        output.push('}');
+        cursor = expr_end + 1;
+    }
+
+    output.push_str(&input[cursor..]);
+    output
+}
+
+fn normalize_single_root_template_layout(input: &str, line_ending: &str, indent: &str) -> String {
+    if input.contains('\n') || input.contains('\r') {
+        return input.to_string();
+    }
+
+    let trimmed = input.trim();
+    if !trimmed.starts_with('<') || !trimmed.ends_with('>') {
+        return input.to_string();
+    }
+
+    let mut output = String::new();
+    output.push_str(line_ending);
+    output.push_str(indent);
+    output.push_str(trimmed);
+    output.push_str(line_ending);
     output
 }
 
@@ -567,8 +618,15 @@ mod tests {
 
     #[test]
     fn test_format_vue_template_block_mvp() {
-        let source = "  <div>{{a+b}}</div>   \n  <p>{{  msg  }}</p>\n";
-        let formatted = format_vue_template_block_mvp(source, "\n");
-        assert_eq!(formatted, "  <div>{{ a+b }}</div>\n  <p>{{ msg }}</p>\n");
+        let source = "  <Comp :label=\"`${ foo }`\">{{msg}}</Comp>   \n  <p>{{  msg  }}</p>\n";
+        let formatted = format_vue_template_block_mvp(source, "\n", "  ");
+        assert_eq!(formatted, "  <Comp :label=\"`${foo}`\">{{ msg }}</Comp>\n  <p>{{ msg }}</p>\n");
+    }
+
+    #[test]
+    fn test_format_vue_template_block_mvp_single_line_layout() {
+        let source = "   <div>{{answer}}</div> ";
+        let formatted = format_vue_template_block_mvp(source, "\n", "  ");
+        assert_eq!(formatted, "\n  <div>{{ answer }}</div>\n");
     }
 }

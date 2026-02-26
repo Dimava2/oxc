@@ -39,6 +39,8 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should format script bloc
   import z from "z";
   const answer = 1;
 </script>
-<template>   <div>{{ answer }}</div></template>
+<template>
+  <div>{{ answer }}</div>
+</template>
 "
 `;

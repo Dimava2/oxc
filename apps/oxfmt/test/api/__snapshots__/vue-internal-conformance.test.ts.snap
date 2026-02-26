@@ -2,44 +2,36 @@
 
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":80} 1`] = `
 {
-  "changedFromInput": 1,
-  "equalToPrettier": 0,
+  "changedFromInput": 3,
+  "equalToPrettier": 3,
   "errorSample": [],
   "errors": 0,
   "fixtures": 3,
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,
-    "templateOnly": 3,
+    "templateOnly": 0,
     "unresolved": 0,
   },
-  "mismatchSample": [
-    "edge/template-interpolation-spacing.vue",
-    "edge/template-interpolation-multiline.vue",
-    "edge/script-and-template.vue",
-  ],
-  "mismatches": 3,
+  "mismatchSample": [],
+  "mismatches": 0,
 }
 `;
 
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
 {
-  "changedFromInput": 1,
-  "equalToPrettier": 0,
+  "changedFromInput": 3,
+  "equalToPrettier": 3,
   "errorSample": [],
   "errors": 0,
   "fixtures": 3,
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,
-    "templateOnly": 3,
+    "templateOnly": 0,
     "unresolved": 0,
   },
-  "mismatchSample": [
-    "edge/template-interpolation-spacing.vue",
-    "edge/template-interpolation-multiline.vue",
-    "edge/script-and-template.vue",
-  ],
-  "mismatches": 3,
+  "mismatchSample": [],
+  "mismatches": 0,
 }
 `;
