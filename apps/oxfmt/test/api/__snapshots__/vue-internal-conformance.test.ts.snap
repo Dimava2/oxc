@@ -2,12 +2,12 @@
 
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":80} 1`] = `
 {
-  "changedFromInput": 4,
-  "equalToPrettier": 4,
+  "changedFromInput": 6,
+  "equalToPrettier": 6,
   "errorSample": [],
   "errors": 0,
   "fixtureSource": "edge-only",
-  "fixtures": 4,
+  "fixtures": 6,
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,
@@ -22,12 +22,12 @@ exports[`experimentalVueInternal differential report > produces differential sum
 
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
 {
-  "changedFromInput": 4,
-  "equalToPrettier": 4,
+  "changedFromInput": 6,
+  "equalToPrettier": 6,
   "errorSample": [],
   "errors": 0,
   "fixtureSource": "edge-only",
-  "fixtures": 4,
+  "fixtures": 6,
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,

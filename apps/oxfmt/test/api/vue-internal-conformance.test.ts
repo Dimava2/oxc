@@ -35,6 +35,14 @@ describe("experimentalVueInternal differential report", () => {
       content:
         '<template><button @click="count+=1" v-if="foo&&bar">{{foo+bar}}</button></template>\n',
     },
+    {
+      name: "edge/v-for-expression.vue",
+      content: '<template><li v-for="(item,index) in items">{{item+index}}</li></template>\n',
+    },
+    {
+      name: "edge/v-slot-bindings.vue",
+      content: '<template><Comp v-slot="{foo=1,bar}">{{foo+bar}}</Comp></template>\n',
+    },
   );
 
   it.each([

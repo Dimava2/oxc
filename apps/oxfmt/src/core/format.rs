@@ -10,7 +10,10 @@ use tracing::instrument;
 use oxc_allocator::AllocatorPool;
 use oxc_ast::ast::Statement;
 use oxc_diagnostics::OxcDiagnostic;
-use oxc_formatter::{FormatOptions, Formatter, enable_jsx_source_type, get_parse_options};
+use oxc_formatter::{
+    AstNode, AstNodes, FormatOptions, FormatVueBindingParams, Formatter, enable_jsx_source_type,
+    get_parse_options,
+};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 
@@ -492,7 +495,13 @@ impl SourceFormatter {
 
             output.push_str(&input[cursor..value_start]);
             let value = &input[value_start..value_end];
-            if should_format_vue_directive_attribute(attr_name) {
+            if should_format_vue_binding_attribute(attr_name) {
+                let trimmed = value.trim();
+                let normalized = self
+                    .format_vue_binding_params(trimmed, format_options)
+                    .unwrap_or_else(|| trimmed.to_string());
+                output.push_str(&normalized);
+            } else if should_format_vue_directive_attribute(attr_name) {
                 let trimmed = value.trim();
                 let normalized = self
                     .format_vue_inline_expression(trimmed, format_options)
@@ -508,6 +517,45 @@ impl SourceFormatter {
 
         output.push_str(&input[cursor..]);
         output
+    }
+
+    fn format_vue_binding_params(
+        &self,
+        binding: &str,
+        format_options: &FormatOptions,
+    ) -> Option<String> {
+        if binding.is_empty() {
+            return Some(String::new());
+        }
+
+        let wrapped = format!("function __oxfmt_vue_binding__({binding}) {{}}");
+        let source_type =
+            SourceType::from_extension("mjs").ok()?.with_module(true).with_standard(true);
+
+        let allocator = self.allocator_pool.get();
+        let ret = Parser::new(&allocator, &wrapped, source_type)
+            .with_options(get_parse_options())
+            .parse();
+        if !ret.errors.is_empty() {
+            return None;
+        }
+
+        let statement = ret.program.body.first()?;
+        let Statement::FunctionDeclaration(func) = statement else {
+            return None;
+        };
+        let params = &*func.params;
+        let node = AstNode::new(params, AstNodes::Dummy(), &allocator);
+        let content = FormatVueBindingParams::new(&node, false);
+        let formatted = Formatter::new(&allocator, format_options.clone()).format_node(
+            &content,
+            ret.program.source_text,
+            source_type,
+            &ret.program.comments,
+            None,
+        );
+        let printed = formatted.print().ok()?.into_code();
+        Some(normalize_binding_params_layout(printed.trim()))
     }
 
     fn format_vue_inline_expression(
@@ -708,6 +756,20 @@ fn should_format_vue_directive_attribute(attr_name: &str) -> bool {
         )
 }
 
+fn should_format_vue_binding_attribute(attr_name: &str) -> bool {
+    attr_name == "v-slot" || attr_name.starts_with("v-slot:") || attr_name.starts_with('#')
+}
+
+fn normalize_binding_params_layout(input: &str) -> String {
+    if !input.contains('\n') && !input.contains('\r') {
+        return input.to_string();
+    }
+
+    let compact =
+        input.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ");
+    compact.replace(", }", " }").replace(", ]", " ]")
+}
+
 fn strip_redundant_wrapping_parens(input: &str) -> &str {
     if !input.starts_with('(') || !input.ends_with(')') {
         return input;
@@ -793,9 +855,16 @@ mod tests {
     #[test]
     fn test_format_vue_inline_assignment_expression() {
         let formatter = SourceFormatter::new(1);
-        let expression = formatter
-            .format_vue_inline_expression("count+=1", &FormatOptions::default())
-            .unwrap();
+        let expression =
+            formatter.format_vue_inline_expression("count+=1", &FormatOptions::default()).unwrap();
         assert_eq!(expression, "count += 1");
+    }
+
+    #[test]
+    fn test_format_vue_binding_params() {
+        let formatter = SourceFormatter::new(1);
+        let params =
+            formatter.format_vue_binding_params("{foo=1,bar}", &FormatOptions::default()).unwrap();
+        assert_eq!(params, "{ foo = 1, bar }");
     }
 }
