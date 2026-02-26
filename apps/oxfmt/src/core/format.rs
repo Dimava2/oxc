@@ -639,31 +639,38 @@ impl SourceFormatter {
         }
 
         let wrapped = format!("const __oxfmt_vue_expr__ = {expression};");
-        let source_type =
-            SourceType::from_extension("mjs").ok()?.with_module(true).with_standard(true);
+        for extension in ["mjs", "ts"] {
+            let source_type = SourceType::from_extension(extension)
+                .ok()?
+                .with_module(true)
+                .with_standard(true);
+            let allocator = self.allocator_pool.get();
+            let ret = Parser::new(&allocator, &wrapped, source_type)
+                .with_options(get_parse_options())
+                .parse();
+            if !ret.errors.is_empty() {
+                continue;
+            }
 
-        let allocator = self.allocator_pool.get();
-        let ret = Parser::new(&allocator, &wrapped, source_type)
-            .with_options(get_parse_options())
-            .parse();
-        if !ret.errors.is_empty() {
-            return None;
+            let statement = ret.program.body.first()?;
+            let Statement::VariableDeclaration(decl) = statement else {
+                continue;
+            };
+            let declarator = decl.declarations.first()?;
+            let Some(init) = declarator.init.as_ref() else {
+                continue;
+            };
+
+            let printed = Formatter::new(&allocator, format_options.clone()).build(&ret.program);
+            let rest = printed.trim().strip_prefix("const __oxfmt_vue_expr__ =")?.trim();
+            let rest = rest.strip_suffix(';').unwrap_or(rest).trim();
+            if matches!(init, oxc_ast::ast::Expression::AssignmentExpression(_)) {
+                return Some(strip_redundant_wrapping_parens(rest).to_string());
+            }
+            return Some(rest.to_string());
         }
 
-        let statement = ret.program.body.first()?;
-        let Statement::VariableDeclaration(decl) = statement else {
-            return None;
-        };
-        let declarator = decl.declarations.first()?;
-        let init = declarator.init.as_ref()?;
-
-        let printed = Formatter::new(&allocator, format_options.clone()).build(&ret.program);
-        let rest = printed.trim().strip_prefix("const __oxfmt_vue_expr__ =")?.trim();
-        let rest = rest.strip_suffix(';').unwrap_or(rest).trim();
-        if matches!(init, oxc_ast::ast::Expression::AssignmentExpression(_)) {
-            return Some(strip_redundant_wrapping_parens(rest).to_string());
-        }
-        Some(rest.to_string())
+        None
     }
 
     /// Format `package.json`: optionally sort then format by external formatter.
@@ -1048,10 +1055,7 @@ fn is_complex_event_binding_expression(value: &str) -> bool {
         || value.starts_with("if ")
         || value.starts_with("if(")
         || value.starts_with("function")
-        || value.contains(" as ")
-        || value.contains(" satisfies ")
         || (value.contains("=>") && value.contains(':'))
-        || (value.contains('<') && value.contains('>'))
 }
 
 fn has_unsupported_multiline_directive_template_literal(source_text: &str) -> bool {
@@ -1259,6 +1263,15 @@ mod tests {
         let expression =
             formatter.format_vue_inline_expression("a+b", &FormatOptions::default()).unwrap();
         assert_eq!(expression, "a + b");
+    }
+
+    #[test]
+    fn test_format_vue_inline_expression_with_typescript_syntax() {
+        let formatter = SourceFormatter::new(1);
+        let expression = formatter
+            .format_vue_inline_expression("value as Foo satisfies Bar", &FormatOptions::default())
+            .unwrap();
+        assert_eq!(expression, "value as Foo satisfies Bar");
     }
 
     #[test]
