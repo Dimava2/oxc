@@ -117,4 +117,56 @@ let x = 1;
     expect(external.errors).toStrictEqual([]);
     expect(internal.code).toBe(external.code);
   });
+
+  it("should fallback to external formatter for style blocks", async () => {
+    const input = `
+<template><div class="x">{{count}}</div></template>
+<style>
+.x{ display:flex; }
+</style>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for multiline directive template literals", async () => {
+    const input = `
+<template>
+  <Comp
+    #default="{ a = \`line
+\${foo}\` }"
+  >{{ a }}</Comp>
+</template>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for unindented multiline template content", async () => {
+    const input = `
+<template>
+<span>{{(a||          b)}} {{z&&(a&&b)}}</span>
+</template>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
 });
