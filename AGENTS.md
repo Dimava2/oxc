@@ -322,3 +322,38 @@ Tests are TypeScript files in each package's `test/` directory.
 ---
 
 For human contributors see `CONTRIBUTING.md` and [oxc.rs](https://oxc.rs/docs/contribute/introduction.html)
+
+## Cursor Cloud specific instructions
+
+### System dependency
+
+The Cloud VM's Clang toolchain is missing `libstdc++-14-dev`, which is required by `libmimalloc-sys2` (used by `mimalloc-safe`). The update script installs it automatically, but if you see a CMake "C++ compiler broken" error mentioning `-lstdc++`, run `sudo apt-get install -y libstdc++-14-dev`.
+
+### Key commands
+
+All standard dev commands are in the `justfile`. The most common:
+- `just check` — cargo check all crates
+- `just lint` — clippy with `--deny warnings`
+- `just test` — `cargo test --all-features`
+- `just fmt` — format (cargo-shear + rustfmt + node fmt)
+- `just ready` — full CI-equivalent check suite
+
+### Running application binaries
+
+- **oxlint**: `cargo run -p oxlint -- [args]` (linter, default features are fine)
+- **oxfmt (pure Rust CLI)**: `cargo run -p oxfmt --no-default-features -- [args]`
+  - The default `napi` feature panics without the JS/NAPI layer; always use `--no-default-features` for direct `cargo run`
+  - For the full hybrid CLI: `pnpm -C apps/oxfmt build-test && node apps/oxfmt/dist/cli.js [args]`
+- **Parser example**: `cargo run -p oxc_parser --example parser -- <file>`
+
+### Conformance test submodules
+
+Run `just submodules` to clone/update all conformance test repos (test262, babel, typescript, prettier, estree-conformance). Required for `just conformance` / `cargo coverage`.
+
+### Snapshot test note
+
+The `oxc_codegen` test `stacktrace_is_correct` captures the Node.js version in its snapshot. If your Node.js version differs from `.node-version` (24.12.0), this test will fail with a snapshot diff. Accept with `cargo insta accept` if the only diff is the version string.
+
+### No external services
+
+This project has no databases, Docker dependencies, or background services. Everything runs as local Rust/Node.js tooling.
