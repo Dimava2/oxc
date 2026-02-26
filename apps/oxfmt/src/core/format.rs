@@ -342,6 +342,11 @@ impl SourceFormatter {
                 "internal Vue formatter does not support multiline template-literal directives yet",
             ));
         }
+        if has_unsupported_event_binding_expressions(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support complex event-binding expressions yet",
+            ));
+        }
         if has_unsupported_custom_sfc_blocks(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support custom SFC blocks yet",
@@ -866,6 +871,69 @@ fn has_unsupported_custom_sfc_blocks(source_text: &str) -> bool {
     false
 }
 
+fn has_unsupported_event_binding_expressions(source_text: &str) -> bool {
+    let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
+    template_blocks.into_iter().any(|block| {
+        let content = &source_text[block.content_start..block.content_end];
+        let bytes = content.as_bytes();
+        let mut i = 0usize;
+        while i + 1 < bytes.len() {
+            if bytes[i] != b'=' || !matches!(bytes[i + 1], b'"' | b'\'') {
+                i += 1;
+                continue;
+            }
+
+            let quote = bytes[i + 1];
+            let mut name_start = i;
+            while name_start > 0 {
+                let ch = bytes[name_start - 1] as char;
+                if ch.is_whitespace() || matches!(ch, '<' | '/') {
+                    break;
+                }
+                name_start -= 1;
+            }
+            let attr_name = &content[name_start..i];
+
+            let value_start = i + 2;
+            let mut value_end = value_start;
+            while value_end < bytes.len() {
+                if bytes[value_end] == quote
+                    && (value_end == value_start || bytes[value_end - 1] != b'\\')
+                {
+                    break;
+                }
+                value_end += 1;
+            }
+            if value_end >= bytes.len() {
+                break;
+            }
+
+            if attr_name.starts_with('@') || attr_name.starts_with("v-on:") {
+                let value = content[value_start..value_end].trim();
+                if is_complex_event_binding_expression(value) {
+                    return true;
+                }
+            }
+
+            i = value_end + 1;
+        }
+        false
+    })
+}
+
+fn is_complex_event_binding_expression(value: &str) -> bool {
+    value.contains('\n')
+        || value.contains('\r')
+        || value.contains(';')
+        || value.starts_with("if ")
+        || value.starts_with("if(")
+        || value.starts_with("function")
+        || value.contains(" as ")
+        || value.contains(" satisfies ")
+        || (value.contains("=>") && value.contains(':'))
+        || (value.contains('<') && value.contains('>'))
+}
+
 fn has_unsupported_multiline_directive_template_literal(source_text: &str) -> bool {
     let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
     template_blocks.into_iter().any(|block| {
@@ -1131,5 +1199,21 @@ ${foo}` }">{{ a }}</Comp>
 <script setup>const a = 1</script>
 "#;
         assert!(!super::has_unsupported_custom_sfc_blocks(source));
+    }
+
+    #[test]
+    fn test_detects_unsupported_event_binding_expressions() {
+        let source = r#"
+<template>
+  <div @click="if (x === 1 as number) { log('hello') } else { log('nonhello') };" />
+</template>
+"#;
+        assert!(super::has_unsupported_event_binding_expressions(source));
+    }
+
+    #[test]
+    fn test_allows_simple_event_binding_expression() {
+        let source = r#"<template><button @click="count += 1">{{ count }}</button></template>"#;
+        assert!(!super::has_unsupported_event_binding_expressions(source));
     }
 }
