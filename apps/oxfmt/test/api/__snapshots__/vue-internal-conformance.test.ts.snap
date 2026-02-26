@@ -1,0 +1,33 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":80} 1`] = `
+{
+  "changedFromInput": 1,
+  "equalToPrettier": 0,
+  "errorSample": [],
+  "errors": 0,
+  "fixtures": 3,
+  "mismatchSample": [
+    "edge/template-interpolation-spacing.vue",
+    "edge/template-interpolation-multiline.vue",
+    "edge/script-and-template.vue",
+  ],
+  "mismatches": 3,
+}
+`;
+
+exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
+{
+  "changedFromInput": 1,
+  "equalToPrettier": 0,
+  "errorSample": [],
+  "errors": 0,
+  "fixtures": 3,
+  "mismatchSample": [
+    "edge/template-interpolation-spacing.vue",
+    "edge/template-interpolation-multiline.vue",
+    "edge/script-and-template.vue",
+  ],
+  "mismatches": 3,
+}
+`;
