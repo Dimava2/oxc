@@ -8,6 +8,7 @@ use tracing::debug;
 use tracing::instrument;
 
 use oxc_allocator::AllocatorPool;
+use oxc_ast::ast::Statement;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_formatter::{FormatOptions, Formatter, enable_jsx_source_type, get_parse_options};
 use oxc_parser::Parser;
@@ -351,6 +352,11 @@ impl SourceFormatter {
         };
         let line_ending = std::str::from_utf8(format_options.line_ending.as_bytes())
             .expect("line ending bytes should be valid utf-8");
+        let template_indent = if format_options.indent_style.is_tab() {
+            "\t".to_string()
+        } else {
+            " ".repeat(usize::from(format_options.indent_width.value()))
+        };
 
         let mut output = source_text.to_string();
         for block in script_blocks.iter().rev() {
@@ -382,20 +388,160 @@ impl SourceFormatter {
         let template_blocks = super::vue_sfc::parse_template_blocks(&output);
         for block in template_blocks.iter().rev() {
             let original = &output[block.content_start..block.content_end];
-            let formatted = format_vue_template_block_mvp(
+            let formatted = self.format_vue_template_block_mvp(
                 original,
                 line_ending,
-                if format_options.indent_style.is_tab() {
-                    "\t".to_string()
-                } else {
-                    " ".repeat(usize::from(format_options.indent_width.value()))
-                }
-                .as_str(),
+                template_indent.as_str(),
+                &format_options,
             );
             output.replace_range(block.content_start..block.content_end, &formatted);
         }
 
         Ok(output)
+    }
+
+    fn format_vue_template_block_mvp(
+        &self,
+        content: &str,
+        line_ending: &str,
+        indent: &str,
+        format_options: &FormatOptions,
+    ) -> String {
+        let normalized = self.normalize_vue_directive_expressions(content, format_options);
+        let normalized = self.normalize_vue_interpolations(&normalized, format_options);
+        let normalized = normalize_template_literal_placeholders(&normalized);
+        let normalized = normalize_single_root_template_layout(&normalized, line_ending, indent);
+        trim_template_trailing_whitespace(&normalized, line_ending)
+    }
+
+    fn normalize_vue_interpolations(&self, input: &str, format_options: &FormatOptions) -> String {
+        let mut output = String::with_capacity(input.len());
+        let mut cursor = 0usize;
+
+        while let Some(start_rel) = input[cursor..].find("{{") {
+            let start = cursor + start_rel;
+            output.push_str(&input[cursor..start]);
+            output.push_str("{{");
+
+            let expr_start = start + 2;
+            let Some(end_rel) = input[expr_start..].find("}}") else {
+                output.push_str(&input[expr_start..]);
+                return output;
+            };
+
+            let expr_end = expr_start + end_rel;
+            let expr = input[expr_start..expr_end].trim();
+            let expr = self
+                .format_vue_inline_expression(expr, format_options)
+                .unwrap_or_else(|| expr.to_string());
+            if !expr.is_empty() {
+                output.push(' ');
+                output.push_str(&expr);
+                output.push(' ');
+            }
+            output.push_str("}}");
+
+            cursor = expr_end + 2;
+        }
+
+        output.push_str(&input[cursor..]);
+        output
+    }
+
+    fn normalize_vue_directive_expressions(
+        &self,
+        input: &str,
+        format_options: &FormatOptions,
+    ) -> String {
+        let mut output = String::with_capacity(input.len());
+        let mut cursor = 0usize;
+        let bytes = input.as_bytes();
+        let mut i = 0usize;
+
+        while i + 1 < bytes.len() {
+            if bytes[i] != b'=' || !matches!(bytes[i + 1], b'"' | b'\'') {
+                i += 1;
+                continue;
+            }
+
+            let quote = bytes[i + 1];
+            let mut name_start = i;
+            while name_start > 0 {
+                let ch = bytes[name_start - 1] as char;
+                if ch.is_whitespace() || matches!(ch, '<' | '/') {
+                    break;
+                }
+                name_start -= 1;
+            }
+            let attr_name = &input[name_start..i];
+
+            let value_start = i + 2;
+            let mut value_end = value_start;
+            while value_end < bytes.len() {
+                if bytes[value_end] == quote
+                    && (value_end == value_start || bytes[value_end - 1] != b'\\')
+                {
+                    break;
+                }
+                value_end += 1;
+            }
+
+            if value_end >= bytes.len() {
+                break;
+            }
+
+            output.push_str(&input[cursor..value_start]);
+            let value = &input[value_start..value_end];
+            if should_format_vue_directive_attribute(attr_name) {
+                let trimmed = value.trim();
+                let normalized = self
+                    .format_vue_inline_expression(trimmed, format_options)
+                    .unwrap_or_else(|| trimmed.to_string());
+                output.push_str(&normalized);
+            } else {
+                output.push_str(value);
+            }
+
+            cursor = value_end;
+            i = value_end + 1;
+        }
+
+        output.push_str(&input[cursor..]);
+        output
+    }
+
+    fn format_vue_inline_expression(
+        &self,
+        expression: &str,
+        format_options: &FormatOptions,
+    ) -> Option<String> {
+        if expression.is_empty() {
+            return Some(String::new());
+        }
+
+        let wrapped = format!("const __oxfmt_vue_expr__ = {expression};");
+        let source_type =
+            SourceType::from_extension("mjs").ok()?.with_module(true).with_standard(true);
+
+        let allocator = self.allocator_pool.get();
+        let ret = Parser::new(&allocator, &wrapped, source_type)
+            .with_options(get_parse_options())
+            .parse();
+        if !ret.errors.is_empty() {
+            return None;
+        }
+
+        let statement = ret.program.body.first()?;
+        let Statement::VariableDeclaration(decl) = statement else {
+            return None;
+        };
+        let declarator = decl.declarations.first()?;
+        declarator.init.as_ref()?;
+
+        let printed = Formatter::new(&allocator, format_options.clone()).build(&ret.program);
+        let rest = printed.trim().strip_prefix("const __oxfmt_vue_expr__ =")?.trim();
+        let rest = rest.strip_suffix(';').unwrap_or(rest).trim();
+        Some(rest.to_string())
     }
 
     /// Format `package.json`: optionally sort then format by external formatter.
@@ -486,44 +632,6 @@ fn wrap_formatted_vue_script(formatted: &str, line_ending: &str, indent: Option<
     output
 }
 
-fn format_vue_template_block_mvp(content: &str, line_ending: &str, indent: &str) -> String {
-    let normalized = normalize_vue_interpolations(content);
-    let normalized = normalize_template_literal_placeholders(&normalized);
-    let normalized = normalize_single_root_template_layout(&normalized, line_ending, indent);
-    trim_template_trailing_whitespace(&normalized, line_ending)
-}
-
-fn normalize_vue_interpolations(input: &str) -> String {
-    let mut output = String::with_capacity(input.len());
-    let mut cursor = 0usize;
-
-    while let Some(start_rel) = input[cursor..].find("{{") {
-        let start = cursor + start_rel;
-        output.push_str(&input[cursor..start]);
-        output.push_str("{{");
-
-        let expr_start = start + 2;
-        let Some(end_rel) = input[expr_start..].find("}}") else {
-            output.push_str(&input[expr_start..]);
-            return output;
-        };
-
-        let expr_end = expr_start + end_rel;
-        let expr = input[expr_start..expr_end].trim();
-        if !expr.is_empty() {
-            output.push(' ');
-            output.push_str(expr);
-            output.push(' ');
-        }
-        output.push_str("}}");
-
-        cursor = expr_end + 2;
-    }
-
-    output.push_str(&input[cursor..]);
-    output
-}
-
 fn normalize_template_literal_placeholders(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
     let mut cursor = 0usize;
@@ -585,11 +693,23 @@ fn trim_template_trailing_whitespace(input: &str, line_ending: &str) -> String {
     output
 }
 
+fn should_format_vue_directive_attribute(attr_name: &str) -> bool {
+    attr_name.starts_with(':')
+        || attr_name.starts_with('@')
+        || attr_name.starts_with("v-bind:")
+        || attr_name.starts_with("v-on:")
+        || attr_name.starts_with("v-model")
+        || matches!(
+            attr_name,
+            "v-if" | "v-else-if" | "v-show" | "v-html" | "v-text" | "v-for" | "v-slot"
+        )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{
-        format_vue_template_block_mvp, source_type_from_vue_script_lang, wrap_formatted_vue_script,
-    };
+    use oxc_formatter::FormatOptions;
+
+    use super::{SourceFormatter, source_type_from_vue_script_lang, wrap_formatted_vue_script};
 
     #[test]
     fn test_source_type_from_vue_script_lang() {
@@ -618,15 +738,27 @@ mod tests {
 
     #[test]
     fn test_format_vue_template_block_mvp() {
+        let formatter = SourceFormatter::new(1);
         let source = "  <Comp :label=\"`${ foo }`\">{{msg}}</Comp>   \n  <p>{{  msg  }}</p>\n";
-        let formatted = format_vue_template_block_mvp(source, "\n", "  ");
+        let formatted =
+            formatter.format_vue_template_block_mvp(source, "\n", "  ", &FormatOptions::default());
         assert_eq!(formatted, "  <Comp :label=\"`${foo}`\">{{ msg }}</Comp>\n  <p>{{ msg }}</p>\n");
     }
 
     #[test]
     fn test_format_vue_template_block_mvp_single_line_layout() {
+        let formatter = SourceFormatter::new(1);
         let source = "   <div>{{answer}}</div> ";
-        let formatted = format_vue_template_block_mvp(source, "\n", "  ");
+        let formatted =
+            formatter.format_vue_template_block_mvp(source, "\n", "  ", &FormatOptions::default());
         assert_eq!(formatted, "\n  <div>{{ answer }}</div>\n");
+    }
+
+    #[test]
+    fn test_format_vue_inline_expression() {
+        let formatter = SourceFormatter::new(1);
+        let expression =
+            formatter.format_vue_inline_expression("a+b", &FormatOptions::default()).unwrap();
+        assert_eq!(expression, "a + b");
     }
 }
