@@ -1,0 +1,23 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`vue_internal > should format script blocks when internal vue mode is enabled 1`] = `
+"--- FILE -----------
+input.vue
+--- BEFORE ---------
+<script lang="ts" setup>
+import z from "z";
+  import a from "a";
+const answer=1
+</script>
+<template>   <div>{{answer}}</div> </template>
+
+--- AFTER ----------
+<script lang="ts" setup>
+  import a from "a";
+  import z from "z";
+  const answer = 1;
+</script>
+<template>   <div>{{answer}}</div> </template>
+
+--------------------"
+`;
