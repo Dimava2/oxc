@@ -789,40 +789,56 @@ fn normalize_unindented_template_lines(input: &str, indent: &str, line_ending: &
     }
 
     let lines: Vec<&str> = input.lines().collect();
-    let base_indent = lines
-        .iter()
-        .filter_map(|line| {
-            let trimmed = line.trim_start_matches([' ', '\t']);
-            if trimmed.is_empty() || trimmed.len() == line.len() {
-                return None;
-            }
-            Some(&line[..line.len() - trimmed.len()])
-        })
-        .min_by_key(|value| value.len())
-        .unwrap_or(indent);
+    let base_indent = indent;
 
     let mut output = String::new();
+    let mut depth = 0usize;
     for (idx, line) in lines.iter().enumerate() {
         if idx > 0 {
             output.push_str(line_ending);
         }
 
         let trimmed = line.trim_start_matches([' ', '\t']);
-        if !trimmed.is_empty()
-            && trimmed.len() == line.len()
-            && (trimmed.starts_with('<') || trimmed.starts_with("{{"))
-        {
+        if !trimmed.is_empty() && (trimmed.starts_with('<') || trimmed.starts_with("{{")) {
+            let line_depth = if trimmed.starts_with("</") { depth.saturating_sub(1) } else { depth };
             output.push_str(base_indent);
+            for _ in 0..line_depth {
+                output.push_str(indent);
+            }
             output.push_str(trimmed);
         } else {
             output.push_str(line);
         }
+
+        depth = update_template_depth(depth, trimmed);
     }
 
     if input.ends_with('\n') || input.ends_with('\r') {
         output.push_str(line_ending);
     }
     output
+}
+
+fn update_template_depth(current_depth: usize, trimmed_line: &str) -> usize {
+    if trimmed_line.is_empty() || trimmed_line.starts_with("{{") {
+        return current_depth;
+    }
+    if !trimmed_line.starts_with('<') {
+        return current_depth;
+    }
+    if trimmed_line.starts_with("</") {
+        return current_depth.saturating_sub(1);
+    }
+    if trimmed_line.starts_with("<!") || trimmed_line.starts_with("<?") {
+        return current_depth;
+    }
+    if trimmed_line.ends_with("/>")
+        || has_inline_open_close_pair(trimmed_line)
+        || is_void_tag_open_line(trimmed_line)
+    {
+        return current_depth;
+    }
+    current_depth.saturating_add(1)
 }
 
 fn normalize_simple_text_elements(input: &str, line_ending: &str) -> String {
@@ -1532,7 +1548,7 @@ ${foo}` }">{{ a }}</Comp>
 </template>
 "#;
         let normalized = super::normalize_unindented_template_lines(source, "  ", "\n");
-        assert!(normalized.contains("\n  <span>{{(a||          b)}} {{z&&(a&&b)}}</span>\n"));
+        assert!(normalized.contains("\n    <span>{{(a||          b)}} {{z&&(a&&b)}}</span>\n"));
     }
 
     #[test]
