@@ -232,6 +232,15 @@ pub struct FormatConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(alias = "experimentalTailwindcss")]
     pub sort_tailwindcss: Option<SortTailwindcssConfig>,
+
+    /// Run the internal `vue_oxc_toolkit` parser spike before formatting `.vue` files.
+    ///
+    /// This option is for research/prototyping only.
+    /// It does not change emitted formatting yet.
+    ///
+    /// - Default: `false`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experimental_vue_oxc_toolkit_spike: Option<bool>,
 }
 
 impl FormatConfig {
@@ -534,8 +543,15 @@ impl FormatConfig {
         );
 
         let insert_final_newline = self.insert_final_newline.unwrap_or(true);
+        let vue_oxc_toolkit_spike = self.experimental_vue_oxc_toolkit_spike.unwrap_or(false);
 
-        Ok(OxfmtOptions { format_options, toml_options, sort_package_json, insert_final_newline })
+        Ok(OxfmtOptions {
+            format_options,
+            toml_options,
+            sort_package_json,
+            insert_final_newline,
+            vue_oxc_toolkit_spike,
+        })
     }
 }
 
@@ -924,6 +940,7 @@ pub struct OxfmtOptions {
     pub toml_options: TomlFormatterOptions,
     pub sort_package_json: Option<sort_package_json::SortOptions>,
     pub insert_final_newline: bool,
+    pub vue_oxc_toolkit_spike: bool,
 }
 
 /// Syncs resolved `FormatOptions` values into the raw config JSON.
@@ -1087,6 +1104,7 @@ pub fn finalize_external_options(config: &mut Value, strategy: &FormatFileStrate
         "sortImports",
         "sortTailwindcss",
         "sortPackageJson",
+        "experimentalVueOxcToolkitSpike",
         "insertFinalNewline",
         "overrides",
         "ignorePatterns",
@@ -1187,6 +1205,18 @@ mod tests {
         assert_eq!(oxfmt_options.format_options.indent_width.value(), 2);
         assert_eq!(oxfmt_options.format_options.line_width.value(), 100);
         assert_eq!(oxfmt_options.format_options.sort_imports, None);
+    }
+
+    #[test]
+    fn test_vue_oxc_toolkit_spike_option() {
+        let config: FormatConfig = serde_json::from_str("{}").unwrap();
+        let oxfmt_options = config.into_oxfmt_options().unwrap();
+        assert!(!oxfmt_options.vue_oxc_toolkit_spike);
+
+        let config: FormatConfig =
+            serde_json::from_str(r#"{"experimentalVueOxcToolkitSpike": true}"#).unwrap();
+        let oxfmt_options = config.into_oxfmt_options().unwrap();
+        assert!(oxfmt_options.vue_oxc_toolkit_spike);
     }
 
     #[test]

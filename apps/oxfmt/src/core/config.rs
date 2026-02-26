@@ -95,7 +95,11 @@ pub enum ResolvedOptions {
     OxfmtToml { toml_options: TomlFormatterOptions, insert_final_newline: bool },
     /// For non-JS files formatted by external formatter (Prettier).
     #[cfg(feature = "napi")]
-    ExternalFormatter { external_options: Value, insert_final_newline: bool },
+    ExternalFormatter {
+        external_options: Value,
+        vue_oxc_toolkit_spike: bool,
+        insert_final_newline: bool,
+    },
     /// For `package.json` files: optionally sorted then formatted.
     #[cfg(feature = "napi")]
     ExternalFormatterPackageJson {
@@ -118,8 +122,13 @@ impl ResolvedOptions {
         finalize_external_options(&mut external_options, strategy);
 
         #[cfg(feature = "napi")]
-        let OxfmtOptions { format_options, toml_options, sort_package_json, insert_final_newline } =
-            oxfmt_options;
+        let OxfmtOptions {
+            format_options,
+            toml_options,
+            sort_package_json,
+            insert_final_newline,
+            vue_oxc_toolkit_spike,
+        } = oxfmt_options;
         #[cfg(not(feature = "napi"))]
         let OxfmtOptions { format_options, toml_options, insert_final_newline, .. } = oxfmt_options;
 
@@ -134,9 +143,11 @@ impl ResolvedOptions {
                 ResolvedOptions::OxfmtToml { toml_options, insert_final_newline }
             }
             #[cfg(feature = "napi")]
-            FormatFileStrategy::ExternalFormatter { .. } => {
-                ResolvedOptions::ExternalFormatter { external_options, insert_final_newline }
-            }
+            FormatFileStrategy::ExternalFormatter { .. } => ResolvedOptions::ExternalFormatter {
+                external_options,
+                vue_oxc_toolkit_spike,
+                insert_final_newline,
+            },
             #[cfg(feature = "napi")]
             FormatFileStrategy::ExternalFormatterPackageJson { .. } => {
                 ResolvedOptions::ExternalFormatterPackageJson {

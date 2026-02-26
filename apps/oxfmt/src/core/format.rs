@@ -3,10 +3,10 @@ use std::borrow::Cow;
 use std::path::Path;
 
 use serde_json::Value;
-use tracing::instrument;
 #[cfg(feature = "vue_oxc_toolkit_spike")]
 #[cfg(feature = "napi")]
 use tracing::debug;
+use tracing::instrument;
 
 use oxc_allocator::AllocatorPool;
 use oxc_diagnostics::OxcDiagnostic;
@@ -81,9 +81,19 @@ impl SourceFormatter {
             #[cfg(feature = "napi")]
             (
                 FormatFileStrategy::ExternalFormatter { path, parser_name },
-                ResolvedOptions::ExternalFormatter { external_options, insert_final_newline },
+                ResolvedOptions::ExternalFormatter {
+                    external_options,
+                    vue_oxc_toolkit_spike,
+                    insert_final_newline,
+                },
             ) => (
-                self.format_by_external_formatter(source_text, path, parser_name, external_options),
+                self.format_by_external_formatter(
+                    source_text,
+                    path,
+                    parser_name,
+                    external_options,
+                    vue_oxc_toolkit_spike,
+                ),
                 insert_final_newline,
             ),
             #[cfg(feature = "napi")]
@@ -214,9 +224,12 @@ impl SourceFormatter {
         path: &Path,
         parser_name: &str,
         mut external_options: Value,
+        _vue_oxc_toolkit_spike: bool,
     ) -> Result<String, OxcDiagnostic> {
         #[cfg(feature = "vue_oxc_toolkit_spike")]
-        if parser_name == "vue" && std::env::var_os("OXFMT_VUE_OXC_TOOLKIT_SPIKE").is_some() {
+        if parser_name == "vue"
+            && (_vue_oxc_toolkit_spike || std::env::var_os("OXFMT_VUE_OXC_TOOLKIT_SPIKE").is_some())
+        {
             let report = super::vue_oxc_toolkit_spike::parse_report(source_text);
             if report.panicked || report.error_count > 0 {
                 debug!(
@@ -289,6 +302,6 @@ impl SourceFormatter {
             Cow::Borrowed(source_text)
         };
 
-        self.format_by_external_formatter(&source_text, path, parser_name, external_options)
+        self.format_by_external_formatter(&source_text, path, parser_name, external_options, false)
     }
 }
