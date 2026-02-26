@@ -11,6 +11,7 @@ pub(super) struct VueScriptBlock {
 pub(super) struct VueTemplateBlock {
     pub content_start: usize,
     pub content_end: usize,
+    pub lang: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +43,7 @@ pub(super) fn parse_template_blocks(source_text: &str) -> Vec<VueTemplateBlock> 
         .map(|raw| VueTemplateBlock {
             content_start: raw.content_start,
             content_end: raw.content_end,
+            lang: extract_lang_attribute(raw.open_tag_content).map(ToString::to_string),
         })
         .collect()
 }
@@ -192,8 +194,21 @@ mod tests {
 "#;
         let blocks = parse_template_blocks(source);
         assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].lang, None);
         let content = &source[blocks[0].content_start..blocks[0].content_end];
         assert_eq!(content, " <div> {{a}} </div> ");
+    }
+
+    #[test]
+    fn parses_template_lang_attribute() {
+        let source = r#"
+<template lang="pug">
+  div hello
+</template>
+"#;
+        let blocks = parse_template_blocks(source);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].lang.as_deref(), Some("pug"));
     }
 
     #[test]

@@ -347,6 +347,11 @@ impl SourceFormatter {
                 "internal Vue formatter does not support style blocks yet",
             ));
         }
+        if has_unsupported_template_lang_blocks(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support non-html template lang blocks yet",
+            ));
+        }
         if has_unsupported_event_binding_expressions(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support complex event-binding expressions yet",
@@ -1049,6 +1054,16 @@ fn has_style_blocks(source_text: &str) -> bool {
     !super::vue_sfc::parse_style_blocks(source_text).is_empty()
 }
 
+fn has_unsupported_template_lang_blocks(source_text: &str) -> bool {
+    super::vue_sfc::parse_template_blocks(source_text)
+        .into_iter()
+        .filter_map(|block| block.lang)
+        .any(|lang| {
+            let normalized = lang.trim().to_ascii_lowercase();
+            !normalized.is_empty() && normalized != "html"
+        })
+}
+
 fn has_unsupported_event_binding_expressions(source_text: &str) -> bool {
     let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
     template_blocks.into_iter().any(|block| {
@@ -1402,6 +1417,26 @@ ${foo}` }">{{ a }}</Comp>
 <style>.a { color: red; }</style>
 "#;
         assert!(super::has_style_blocks(source));
+    }
+
+    #[test]
+    fn test_detects_unsupported_template_lang_blocks() {
+        let source = r#"
+<template lang="pug">
+  div hello
+</template>
+"#;
+        assert!(super::has_unsupported_template_lang_blocks(source));
+    }
+
+    #[test]
+    fn test_allows_html_template_lang_blocks() {
+        let source = r#"
+<template lang="html">
+  <div>Hello</div>
+</template>
+"#;
+        assert!(!super::has_unsupported_template_lang_blocks(source));
     }
 
     #[test]
