@@ -92,6 +92,19 @@ const answer=1
     expect(result.errors).toStrictEqual([]);
   });
 
+  it("should avoid quote conflicts in directive expressions", async () => {
+    const input = `<template>
+  <div v-bind:id='"list-"+id'></div>
+</template>
+`;
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
   it("should format multiline open tags in staged internal mode", async () => {
     const input = `<template>
   <Comp

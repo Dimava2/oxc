@@ -1,5 +1,12 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should avoid quote conflicts in directive expressions 1`] = `
+"<template>
+  <div v-bind:id='"list-" + id'></div>
+</template>
+"
+`;
+
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format .vue w/ sort-imports 1`] = `
 "<script lang="ts">
   import a from "a";
@@ -38,7 +45,8 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should format interpolati
 `;
 
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format known SFC blocks while preserving custom blocks 1`] = `
-"<script setup lang="ts">
+"
+<script setup lang="ts">
   const count = 1;
 </script>
 <template>
@@ -52,7 +60,10 @@ message: hello
 
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format multiline open tags in staged internal mode 1`] = `
 "<template>
-  <Comp :label="foo + bar" @click="count += 1">{{ count }}</Comp>
+  <Comp
+    :label="foo + bar"
+    @click="count += 1"
+  >{{ count }}</Comp>
 </template>
 "
 `;

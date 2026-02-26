@@ -11,8 +11,8 @@ use oxc_allocator::AllocatorPool;
 use oxc_ast::ast::Statement;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_formatter::{
-    AstNode, AstNodes, FormatOptions, FormatVueBindingParams, Formatter, enable_jsx_source_type,
-    get_parse_options,
+    AstNode, AstNodes, FormatOptions, FormatVueBindingParams, Formatter, QuoteStyle,
+    enable_jsx_source_type, get_parse_options,
 };
 use oxc_parser::Parser;
 use oxc_span::SourceType;
@@ -527,8 +527,11 @@ impl SourceFormatter {
                 output.push_str(&normalized);
             } else if should_format_vue_directive_attribute(attr_name) {
                 let trimmed = value.trim();
+                let mut expression_options = format_options.clone();
+                expression_options.quote_style =
+                    if quote == b'"' { QuoteStyle::Single } else { QuoteStyle::Double };
                 let normalized = self
-                    .format_vue_inline_expression(trimmed, format_options)
+                    .format_vue_inline_expression(trimmed, &expression_options)
                     .unwrap_or_else(|| value.to_string());
                 output.push_str(&normalized);
             } else {
@@ -1135,7 +1138,7 @@ fn strip_redundant_wrapping_parens(input: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use oxc_formatter::FormatOptions;
+    use oxc_formatter::{FormatOptions, QuoteStyle};
 
     use super::{SourceFormatter, source_type_from_vue_script_lang, wrap_formatted_vue_script};
 
@@ -1200,6 +1203,15 @@ mod tests {
             .format_vue_inline_expression("value as Foo satisfies Bar", &FormatOptions::default())
             .unwrap();
         assert_eq!(expression, "value as Foo satisfies Bar");
+    }
+
+    #[test]
+    fn test_format_vue_inline_expression_with_single_quote_style() {
+        let formatter = SourceFormatter::new(1);
+        let mut options = FormatOptions::default();
+        options.quote_style = QuoteStyle::Single;
+        let expression = formatter.format_vue_inline_expression("\"list-\"+id", &options).unwrap();
+        assert_eq!(expression, "'list-' + id");
     }
 
     #[test]
