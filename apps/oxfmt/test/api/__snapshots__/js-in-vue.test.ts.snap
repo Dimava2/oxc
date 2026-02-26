@@ -50,6 +50,13 @@ message: hello
 "
 `;
 
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format multiline open tags in staged internal mode 1`] = `
+"<template>
+  <Comp :label="foo + bar" @click="count += 1">{{ count }}</Comp>
+</template>
+"
+`;
+
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format script blocks in staged internal vue mode 1`] = `
 "
 <script lang="ts" setup>

@@ -347,11 +347,6 @@ impl SourceFormatter {
                 "internal Vue formatter does not support style blocks yet",
             ));
         }
-        if has_unsupported_multiline_open_tags_in_template(source_text) {
-            return Err(OxcDiagnostic::error(
-                "internal Vue formatter does not support multiline open tags yet",
-            ));
-        }
         if has_unsupported_event_binding_expressions(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support complex event-binding expressions yet",
@@ -931,49 +926,6 @@ fn has_style_blocks(source_text: &str) -> bool {
     !super::vue_sfc::parse_style_blocks(source_text).is_empty()
 }
 
-fn has_unsupported_multiline_open_tags_in_template(source_text: &str) -> bool {
-    let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
-    template_blocks.into_iter().any(|block| {
-        let content = &source_text[block.content_start..block.content_end];
-        let bytes = content.as_bytes();
-        let mut idx = 0usize;
-
-        while idx + 1 < bytes.len() {
-            if bytes[idx] != b'<' || matches!(bytes[idx + 1], b'/' | b'!' | b'?') {
-                idx += 1;
-                continue;
-            }
-
-            let mut tag_end = idx + 1;
-            let mut in_quote: Option<u8> = None;
-            let mut has_newline = false;
-            while tag_end < bytes.len() {
-                let ch = bytes[tag_end];
-                match ch {
-                    b'"' | b'\'' => {
-                        if in_quote == Some(ch) {
-                            in_quote = None;
-                        } else if in_quote.is_none() {
-                            in_quote = Some(ch);
-                        }
-                    }
-                    b'\n' | b'\r' if in_quote.is_none() => has_newline = true,
-                    b'>' if in_quote.is_none() => break,
-                    _ => {}
-                }
-                tag_end += 1;
-            }
-
-            if tag_end < bytes.len() && has_newline {
-                return true;
-            }
-            idx = tag_end.saturating_add(1);
-        }
-
-        false
-    })
-}
-
 fn has_unsupported_event_binding_expressions(source_text: &str) -> bool {
     let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
     template_blocks.into_iter().any(|block| {
@@ -1300,18 +1252,6 @@ ${foo}` }">{{ a }}</Comp>
 <style>.a { color: red; }</style>
 "#;
         assert!(super::has_style_blocks(source));
-    }
-
-    #[test]
-    fn test_detects_multiline_open_tags_in_template() {
-        let source = r#"
-<template>
-  <div
-    class="a"
-  />
-</template>
-"#;
-        assert!(super::has_unsupported_multiline_open_tags_in_template(source));
     }
 
     #[test]

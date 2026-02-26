@@ -92,6 +92,22 @@ const answer=1
     expect(result.errors).toStrictEqual([]);
   });
 
+  it("should format multiline open tags in staged internal mode", async () => {
+    const input = `<template>
+  <Comp
+    :label="foo+bar"
+    @click="count+=1"
+  >{{count}}</Comp>
+</template>
+`;
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
   it("should format known SFC blocks while preserving custom blocks", async () => {
     const input = `
 <script setup lang="ts">
