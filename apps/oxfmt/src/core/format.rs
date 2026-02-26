@@ -352,6 +352,11 @@ impl SourceFormatter {
                 "internal Vue formatter does not support non-html template lang blocks yet",
             ));
         }
+        if has_unsupported_custom_sfc_blocks(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support custom SFC blocks yet",
+            ));
+        }
         if has_unsupported_event_binding_expressions(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support complex event-binding expressions yet",
@@ -1064,6 +1069,66 @@ fn has_unsupported_template_lang_blocks(source_text: &str) -> bool {
         })
 }
 
+fn has_unsupported_custom_sfc_blocks(source_text: &str) -> bool {
+    let mut ignored_ranges = Vec::new();
+    ignored_ranges.extend(
+        super::vue_sfc::parse_template_blocks(source_text)
+            .into_iter()
+            .map(|block| (block.content_start, block.content_end)),
+    );
+    ignored_ranges.extend(
+        super::vue_sfc::parse_script_blocks(source_text)
+            .into_iter()
+            .map(|block| (block.content_start, block.content_end)),
+    );
+    ignored_ranges.extend(
+        super::vue_sfc::parse_style_blocks(source_text)
+            .into_iter()
+            .map(|block| (block.content_start, block.content_end)),
+    );
+
+    let bytes = source_text.as_bytes();
+    let mut idx = 0usize;
+    while idx + 1 < bytes.len() {
+        if bytes[idx] != b'<' {
+            idx += 1;
+            continue;
+        }
+        if bytes[idx + 1] == b'/' || bytes[idx + 1] == b'!' || bytes[idx + 1] == b'?' {
+            idx += 1;
+            continue;
+        }
+        if ignored_ranges.iter().any(|(start, end)| *start <= idx && idx < *end) {
+            idx += 1;
+            continue;
+        }
+
+        let name_start = idx + 1;
+        let mut name_end = name_start;
+        while name_end < bytes.len() {
+            let ch = bytes[name_end] as char;
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                name_end += 1;
+            } else {
+                break;
+            }
+        }
+        if name_end == name_start {
+            idx += 1;
+            continue;
+        }
+
+        let tag_name = &source_text[name_start..name_end];
+        if !matches!(tag_name, "template" | "script" | "style") {
+            return true;
+        }
+
+        idx = name_end;
+    }
+
+    false
+}
+
 fn has_unsupported_event_binding_expressions(source_text: &str) -> bool {
     let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
     template_blocks.into_iter().any(|block| {
@@ -1437,6 +1502,26 @@ ${foo}` }">{{ a }}</Comp>
 </template>
 "#;
         assert!(!super::has_unsupported_template_lang_blocks(source));
+    }
+
+    #[test]
+    fn test_detects_unsupported_custom_sfc_blocks() {
+        let source = r#"
+<template><div /></template>
+<i18n lang="yaml">key: value</i18n>
+"#;
+        assert!(super::has_unsupported_custom_sfc_blocks(source));
+    }
+
+    #[test]
+    fn test_ignores_template_content_tags_when_detecting_custom_sfc_blocks() {
+        let source = r#"
+<template>
+  <i18n-widget />
+</template>
+<script setup>const a = 1</script>
+"#;
+        assert!(!super::has_unsupported_custom_sfc_blocks(source));
     }
 
     #[test]

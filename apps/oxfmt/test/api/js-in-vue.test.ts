@@ -135,7 +135,7 @@ const answer=1
     expect(result.errors).toStrictEqual([]);
   });
 
-  it("should format known SFC blocks while preserving custom blocks", async () => {
+  it("should fallback to external formatter for unsupported custom SFC blocks", async () => {
     const input = `
 <script setup lang="ts">
 const count=1
@@ -145,13 +145,14 @@ const count=1
 message: hello
 </i18n>
 `;
-    const result = await format("a.vue", input, {
+    const internal = await format("a.vue", input, {
       experimentalVueInternal: true,
-      vueIndentScriptAndStyle: true,
     });
+    const external = await format("a.vue", input, {});
 
-    expect(result.code).toMatchSnapshot();
-    expect(result.errors).toStrictEqual([]);
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
   });
 
   it("should fallback to external formatter for unsupported complex event bindings", async () => {
