@@ -3,7 +3,7 @@
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":80} 1`] = `
 {
   "changedFromInput": 4,
-  "equalToPrettier": 3,
+  "equalToPrettier": 4,
   "errorSample": [],
   "errors": 0,
   "fixtureSource": "edge-only",
@@ -11,13 +11,11 @@ exports[`experimentalVueInternal differential report > produces differential sum
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,
-    "templateOnly": 1,
+    "templateOnly": 0,
     "unresolved": 0,
   },
-  "mismatchSample": [
-    "edge/directive-expressions.vue",
-  ],
-  "mismatches": 1,
+  "mismatchSample": [],
+  "mismatches": 0,
   "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;
@@ -25,7 +23,7 @@ exports[`experimentalVueInternal differential report > produces differential sum
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
 {
   "changedFromInput": 4,
-  "equalToPrettier": 3,
+  "equalToPrettier": 4,
   "errorSample": [],
   "errors": 0,
   "fixtureSource": "edge-only",
@@ -33,13 +31,11 @@ exports[`experimentalVueInternal differential report > produces differential sum
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,
-    "templateOnly": 1,
+    "templateOnly": 0,
     "unresolved": 0,
   },
-  "mismatchSample": [
-    "edge/directive-expressions.vue",
-  ],
-  "mismatches": 1,
+  "mismatchSample": [],
+  "mismatches": 0,
   "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;

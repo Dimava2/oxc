@@ -536,11 +536,14 @@ impl SourceFormatter {
             return None;
         };
         let declarator = decl.declarations.first()?;
-        declarator.init.as_ref()?;
+        let init = declarator.init.as_ref()?;
 
         let printed = Formatter::new(&allocator, format_options.clone()).build(&ret.program);
         let rest = printed.trim().strip_prefix("const __oxfmt_vue_expr__ =")?.trim();
         let rest = rest.strip_suffix(';').unwrap_or(rest).trim();
+        if matches!(init, oxc_ast::ast::Expression::AssignmentExpression(_)) {
+            return Some(strip_redundant_wrapping_parens(rest).to_string());
+        }
         Some(rest.to_string())
     }
 
@@ -705,6 +708,31 @@ fn should_format_vue_directive_attribute(attr_name: &str) -> bool {
         )
 }
 
+fn strip_redundant_wrapping_parens(input: &str) -> &str {
+    if !input.starts_with('(') || !input.ends_with(')') {
+        return input;
+    }
+
+    let mut depth = 0usize;
+    for (idx, ch) in input.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                if depth == 0 {
+                    return input;
+                }
+                depth -= 1;
+                if depth == 0 && idx != input.len() - 1 {
+                    return input;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if depth == 0 { &input[1..input.len() - 1] } else { input }
+}
+
 #[cfg(test)]
 mod tests {
     use oxc_formatter::FormatOptions;
@@ -760,5 +788,14 @@ mod tests {
         let expression =
             formatter.format_vue_inline_expression("a+b", &FormatOptions::default()).unwrap();
         assert_eq!(expression, "a + b");
+    }
+
+    #[test]
+    fn test_format_vue_inline_assignment_expression() {
+        let formatter = SourceFormatter::new(1);
+        let expression = formatter
+            .format_vue_inline_expression("count+=1", &FormatOptions::default())
+            .unwrap();
+        assert_eq!(expression, "count += 1");
     }
 }
