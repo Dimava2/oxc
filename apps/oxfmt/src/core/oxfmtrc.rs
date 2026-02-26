@@ -233,6 +233,15 @@ pub struct FormatConfig {
     #[serde(alias = "experimentalTailwindcss")]
     pub sort_tailwindcss: Option<SortTailwindcssConfig>,
 
+    /// Route `.vue` files through the internal Vue formatting strategy.
+    ///
+    /// This is a staged feature flag for incremental implementation.
+    /// Current behavior still falls back to external formatter when internal path is incomplete.
+    ///
+    /// - Default: `false`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experimental_vue_internal: Option<bool>,
+
     /// Run the internal `vue_oxc_toolkit` parser spike before formatting `.vue` files.
     ///
     /// This option is for research/prototyping only.
@@ -543,6 +552,7 @@ impl FormatConfig {
         );
 
         let insert_final_newline = self.insert_final_newline.unwrap_or(true);
+        let vue_internal = self.experimental_vue_internal.unwrap_or(false);
         let vue_oxc_toolkit_spike = self.experimental_vue_oxc_toolkit_spike.unwrap_or(false);
 
         Ok(OxfmtOptions {
@@ -550,6 +560,7 @@ impl FormatConfig {
             toml_options,
             sort_package_json,
             insert_final_newline,
+            vue_internal,
             vue_oxc_toolkit_spike,
         })
     }
@@ -940,6 +951,7 @@ pub struct OxfmtOptions {
     pub toml_options: TomlFormatterOptions,
     pub sort_package_json: Option<sort_package_json::SortOptions>,
     pub insert_final_newline: bool,
+    pub vue_internal: bool,
     pub vue_oxc_toolkit_spike: bool,
 }
 
@@ -1104,6 +1116,7 @@ pub fn finalize_external_options(config: &mut Value, strategy: &FormatFileStrate
         "sortImports",
         "sortTailwindcss",
         "sortPackageJson",
+        "experimentalVueInternal",
         "experimentalVueOxcToolkitSpike",
         "insertFinalNewline",
         "overrides",
@@ -1211,11 +1224,19 @@ mod tests {
     fn test_vue_oxc_toolkit_spike_option() {
         let config: FormatConfig = serde_json::from_str("{}").unwrap();
         let oxfmt_options = config.into_oxfmt_options().unwrap();
+        assert!(!oxfmt_options.vue_internal);
+        assert!(!oxfmt_options.vue_oxc_toolkit_spike);
+
+        let config: FormatConfig =
+            serde_json::from_str(r#"{"experimentalVueInternal": true}"#).unwrap();
+        let oxfmt_options = config.into_oxfmt_options().unwrap();
+        assert!(oxfmt_options.vue_internal);
         assert!(!oxfmt_options.vue_oxc_toolkit_spike);
 
         let config: FormatConfig =
             serde_json::from_str(r#"{"experimentalVueOxcToolkitSpike": true}"#).unwrap();
         let oxfmt_options = config.into_oxfmt_options().unwrap();
+        assert!(!oxfmt_options.vue_internal);
         assert!(oxfmt_options.vue_oxc_toolkit_spike);
     }
 

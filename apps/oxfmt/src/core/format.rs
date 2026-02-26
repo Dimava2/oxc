@@ -3,7 +3,6 @@ use std::borrow::Cow;
 use std::path::Path;
 
 use serde_json::Value;
-#[cfg(feature = "vue_oxc_toolkit_spike")]
 #[cfg(feature = "napi")]
 use tracing::debug;
 use tracing::instrument;
@@ -83,6 +82,7 @@ impl SourceFormatter {
                 FormatFileStrategy::ExternalFormatter { path, parser_name },
                 ResolvedOptions::ExternalFormatter {
                     external_options,
+                    vue_internal,
                     vue_oxc_toolkit_spike,
                     insert_final_newline,
                 },
@@ -92,10 +92,47 @@ impl SourceFormatter {
                     path,
                     parser_name,
                     external_options,
+                    vue_internal,
                     vue_oxc_toolkit_spike,
                 ),
                 insert_final_newline,
             ),
+            #[cfg(feature = "napi")]
+            (
+                FormatFileStrategy::ExternalFormatter { path, parser_name: "vue" },
+                ResolvedOptions::OxcVueFormatter {
+                    format_options,
+                    external_options,
+                    vue_oxc_toolkit_spike,
+                    insert_final_newline,
+                },
+            ) => {
+                let internal_result = self.format_by_oxc_vue_formatter(
+                    source_text,
+                    path,
+                    *format_options,
+                    &external_options,
+                    vue_oxc_toolkit_spike,
+                );
+                (
+                    internal_result.or_else(|err| {
+                        debug!(
+                            error = %err,
+                            path = %path.display(),
+                            "internal Vue formatter skeleton failed; falling back to external formatter"
+                        );
+                        self.format_by_external_formatter(
+                            source_text,
+                            path,
+                            "vue",
+                            external_options,
+                            true,
+                            vue_oxc_toolkit_spike,
+                        )
+                    }),
+                    insert_final_newline,
+                )
+            }
             #[cfg(feature = "napi")]
             (
                 FormatFileStrategy::ExternalFormatterPackageJson { path, parser_name },
@@ -224,6 +261,7 @@ impl SourceFormatter {
         path: &Path,
         parser_name: &str,
         mut external_options: Value,
+        _vue_internal: bool,
         _vue_oxc_toolkit_spike: bool,
     ) -> Result<String, OxcDiagnostic> {
         #[cfg(feature = "vue_oxc_toolkit_spike")]
@@ -274,6 +312,31 @@ impl SourceFormatter {
         })
     }
 
+    #[cfg(feature = "napi")]
+    #[instrument(level = "debug", name = "oxfmt::format::oxc_vue_formatter", skip_all)]
+    fn format_by_oxc_vue_formatter(
+        &self,
+        source_text: &str,
+        path: &Path,
+        _format_options: FormatOptions,
+        _external_options: &Value,
+        _vue_oxc_toolkit_spike: bool,
+    ) -> Result<String, OxcDiagnostic> {
+        let _ = (source_text, path);
+        #[cfg(feature = "vue_oxc_toolkit_spike")]
+        if _vue_oxc_toolkit_spike || std::env::var_os("OXFMT_VUE_OXC_TOOLKIT_SPIKE").is_some() {
+            let report = super::vue_oxc_toolkit_spike::parse_report(source_text);
+            if report.panicked || report.error_count > 0 {
+                return Err(OxcDiagnostic::error(format!(
+                    "vue_oxc_toolkit spike parser failed (panicked={}, errors={})",
+                    report.panicked, report.error_count
+                )));
+            }
+        }
+
+        Err(OxcDiagnostic::error("internal Vue formatter is staged but not implemented yet"))
+    }
+
     /// Format `package.json`: optionally sort then format by external formatter.
     #[cfg(feature = "napi")]
     #[instrument(
@@ -302,6 +365,13 @@ impl SourceFormatter {
             Cow::Borrowed(source_text)
         };
 
-        self.format_by_external_formatter(&source_text, path, parser_name, external_options, false)
+        self.format_by_external_formatter(
+            &source_text,
+            path,
+            parser_name,
+            external_options,
+            false,
+            false,
+        )
     }
 }
