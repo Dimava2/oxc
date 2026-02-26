@@ -886,12 +886,106 @@ fn normalize_single_root_template_layout(input: &str, line_ending: &str, indent:
         return input.to_string();
     }
 
+    let segments = split_compact_template_segments(trimmed);
+    if segments.len() > 1 {
+        let mut output = String::new();
+        output.push_str(line_ending);
+
+        let mut depth = 0usize;
+        for segment in segments {
+            let segment = segment.trim();
+            if segment.is_empty() {
+                continue;
+            }
+
+            if segment.starts_with("</") {
+                depth = depth.saturating_sub(1);
+            }
+
+            for _ in 0..=depth {
+                output.push_str(indent);
+            }
+            output.push_str(segment);
+            output.push_str(line_ending);
+
+            if is_simple_open_tag(segment)
+                && !has_inline_open_close_pair(segment)
+                && !is_void_tag_open_line(segment)
+            {
+                depth = depth.saturating_add(1);
+            }
+        }
+
+        return output;
+    }
+
     let mut output = String::new();
     output.push_str(line_ending);
     output.push_str(indent);
     output.push_str(trimmed);
     output.push_str(line_ending);
     output
+}
+
+fn split_compact_template_segments(input: &str) -> Vec<&str> {
+    if !input.contains("><") {
+        return vec![input];
+    }
+
+    let bytes = input.as_bytes();
+    let mut in_quote: Option<u8> = None;
+    let mut start = 0usize;
+    let mut segments = Vec::new();
+    let mut idx = 0usize;
+
+    while idx < bytes.len() {
+        let ch = bytes[idx];
+        match ch {
+            b'"' | b'\'' => {
+                if in_quote == Some(ch) {
+                    in_quote = None;
+                } else if in_quote.is_none() {
+                    in_quote = Some(ch);
+                }
+            }
+            b'>' if in_quote.is_none() && idx + 1 < bytes.len() && bytes[idx + 1] == b'<' => {
+                segments.push(&input[start..=idx]);
+                start = idx + 1;
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    if start < input.len() {
+        segments.push(&input[start..]);
+    }
+
+    segments
+}
+
+fn has_inline_open_close_pair(trimmed: &str) -> bool {
+    let Some(first_gt) = trimmed.find('>') else {
+        return false;
+    };
+    let Some(open_tag_name) = extract_tag_name(trimmed.trim_start_matches('<')) else {
+        return false;
+    };
+    let close_tag = format!("</{open_tag_name}>");
+    trimmed[first_gt + 1..].contains(&close_tag)
+}
+
+fn is_void_tag_open_line(trimmed: &str) -> bool {
+    const VOID_TAGS: [&str; 14] = [
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+        "source", "track", "wbr",
+    ];
+
+    let Some(tag) = extract_tag_name(trimmed.trim_start_matches('<')) else {
+        return false;
+    };
+
+    VOID_TAGS.contains(&tag)
 }
 
 fn trim_template_trailing_whitespace(input: &str, line_ending: &str) -> String {
@@ -1203,6 +1297,24 @@ mod tests {
         let formatted =
             formatter.format_vue_template_block_mvp(source, "\n", "  ", &FormatOptions::default());
         assert_eq!(formatted, "\n  <div>{{ answer }}</div>\n");
+    }
+
+    #[test]
+    fn test_format_vue_template_block_mvp_single_line_siblings_layout() {
+        let formatter = SourceFormatter::new(1);
+        let source = "<p>foo</p><div>foo</div>";
+        let formatted =
+            formatter.format_vue_template_block_mvp(source, "\n", "  ", &FormatOptions::default());
+        assert_eq!(formatted, "\n  <p>foo</p>\n  <div>foo</div>\n");
+    }
+
+    #[test]
+    fn test_format_vue_template_block_mvp_single_line_nested_layout() {
+        let formatter = SourceFormatter::new(1);
+        let source = "<div><p>foo</p><div>bar</div></div>";
+        let formatted =
+            formatter.format_vue_template_block_mvp(source, "\n", "  ", &FormatOptions::default());
+        assert_eq!(formatted, "\n  <div>\n    <p>foo</p>\n    <div>bar</div>\n  </div>\n");
     }
 
     #[test]
