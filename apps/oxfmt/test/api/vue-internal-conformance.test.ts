@@ -30,6 +30,11 @@ describe("experimentalVueInternal differential report", () => {
       name: "edge/script-and-template.vue",
       content: `<script setup lang="ts">\nimport z from "z"\nimport a from "a"\nconst answer=1\n</script>\n<template>   <div>{{answer}}</div> </template>\n`,
     },
+    {
+      name: "edge/directive-expressions.vue",
+      content:
+        '<template><button @click="count+=1" v-if="foo&&bar">{{foo+bar}}</button></template>\n',
+    },
   );
 
   it.each([
