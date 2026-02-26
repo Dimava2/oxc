@@ -352,6 +352,11 @@ impl SourceFormatter {
                 "internal Vue formatter does not support multiline open tags yet",
             ));
         }
+        if has_unindented_template_content_lines(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support unindented multiline template content yet",
+            ));
+        }
         if has_unsupported_interpolation_filters(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support interpolation filter pipes yet",
@@ -703,6 +708,7 @@ impl SourceFormatter {
 fn source_type_from_vue_script_lang(lang: Option<&str>) -> Option<SourceType> {
     let extension = match lang {
         None => "mjs",
+        Some("") => "mjs",
         Some("js" | "javascript") => "mjs",
         Some("ts" | "typescript") => "ts",
         Some("tsx") => "tsx",
@@ -930,6 +936,29 @@ fn has_unsupported_multiline_open_tags_in_template(source_text: &str) -> bool {
         }
 
         false
+    })
+}
+
+fn has_unindented_template_content_lines(source_text: &str) -> bool {
+    let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
+    template_blocks.into_iter().any(|block| {
+        let content = &source_text[block.content_start..block.content_end];
+        if !(content.contains('\n') || content.contains('\r')) {
+            return false;
+        }
+
+        content.lines().any(|line| {
+            if line.is_empty() {
+                return false;
+            }
+            let trimmed_start = line.trim_start_matches([' ', '\t']);
+            if trimmed_start.is_empty() {
+                return false;
+            }
+            let has_leading_indent = trimmed_start.len() != line.len();
+            !has_leading_indent
+                && (trimmed_start.starts_with('<') || trimmed_start.starts_with("{{"))
+        })
     })
 }
 
@@ -1183,6 +1212,9 @@ mod tests {
         let source_type = source_type_from_vue_script_lang(None).unwrap();
         assert!(source_type.is_module());
 
+        let source_type = source_type_from_vue_script_lang(Some("")).unwrap();
+        assert!(source_type.is_module());
+
         let source_type = source_type_from_vue_script_lang(Some("ts")).unwrap();
         assert!(source_type.is_typescript());
         assert!(source_type.is_module());
@@ -1311,6 +1343,16 @@ ${foo}` }">{{ a }}</Comp>
 </template>
 "#;
         assert!(super::has_unsupported_multiline_open_tags_in_template(source));
+    }
+
+    #[test]
+    fn test_detects_unindented_template_content_lines() {
+        let source = r#"
+<template>
+<span>{{(a||          b)}} {{z&&(a&&b)}}</span>
+</template>
+"#;
+        assert!(super::has_unindented_template_content_lines(source));
     }
 
     #[test]
