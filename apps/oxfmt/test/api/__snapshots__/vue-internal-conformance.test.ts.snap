@@ -2,40 +2,46 @@
 
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":80} 1`] = `
 {
-  "changedFromInput": 6,
+  "changedFromInput": 8,
   "equalToPrettier": 6,
   "errorSample": [],
   "errors": 0,
   "fixtureSource": "edge-only",
-  "fixtures": 6,
+  "fixtures": 8,
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,
-    "templateOnly": 0,
+    "templateOnly": 2,
     "unresolved": 0,
   },
-  "mismatchSample": [],
-  "mismatches": 0,
+  "mismatchSample": [
+    "edge/vue-bindings-multiline-template-literal.vue",
+    "edge/vue-for-multiline-template-literal.vue",
+  ],
+  "mismatches": 2,
   "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;
 
 exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
 {
-  "changedFromInput": 6,
+  "changedFromInput": 8,
   "equalToPrettier": 6,
   "errorSample": [],
   "errors": 0,
   "fixtureSource": "edge-only",
-  "fixtures": 6,
+  "fixtures": 8,
   "mismatchKinds": {
     "scriptOnly": 0,
     "templateAndScript": 0,
-    "templateOnly": 0,
+    "templateOnly": 2,
     "unresolved": 0,
   },
-  "mismatchSample": [],
-  "mismatches": 0,
+  "mismatchSample": [
+    "edge/vue-bindings-multiline-template-literal.vue",
+    "edge/vue-for-multiline-template-literal.vue",
+  ],
+  "mismatches": 2,
   "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;

@@ -495,10 +495,16 @@ impl SourceFormatter {
 
             output.push_str(&input[cursor..value_start]);
             let value = &input[value_start..value_end];
-            if should_format_vue_binding_attribute(attr_name) {
+            if attr_name == "v-for" {
                 let trimmed = value.trim();
                 let normalized = self
-                    .format_vue_binding_params(trimmed, format_options)
+                    .format_vue_v_for_expression(trimmed, format_options)
+                    .unwrap_or_else(|| trimmed.to_string());
+                output.push_str(&normalized);
+            } else if should_format_vue_binding_attribute(attr_name) {
+                let trimmed = value.trim();
+                let normalized = self
+                    .format_vue_binding_params(trimmed, format_options, false)
                     .unwrap_or_else(|| trimmed.to_string());
                 output.push_str(&normalized);
             } else if should_format_vue_directive_attribute(attr_name) {
@@ -519,10 +525,26 @@ impl SourceFormatter {
         output
     }
 
+    fn format_vue_v_for_expression(
+        &self,
+        expression: &str,
+        format_options: &FormatOptions,
+    ) -> Option<String> {
+        let (left, operator, right) = split_v_for_expression(expression)?;
+        let left = strip_redundant_wrapping_parens(left.trim());
+        let left = self.format_vue_binding_params(left, format_options, true)?;
+        let right = self
+            .format_vue_inline_expression(right.trim(), format_options)
+            .unwrap_or_else(|| right.trim().to_string());
+
+        Some(format!("{left} {operator} {right}"))
+    }
+
     fn format_vue_binding_params(
         &self,
         binding: &str,
         format_options: &FormatOptions,
+        is_v_for_binding_left: bool,
     ) -> Option<String> {
         if binding.is_empty() {
             return Some(String::new());
@@ -546,7 +568,9 @@ impl SourceFormatter {
         };
         let params = &*func.params;
         let node = AstNode::new(params, AstNodes::Dummy(), &allocator);
-        let content = FormatVueBindingParams::new(&node, false);
+        let include_parens =
+            is_v_for_binding_left && (params.items.len() > 1 || params.rest.is_some());
+        let content = FormatVueBindingParams::new(&node, include_parens);
         let formatted = Formatter::new(&allocator, format_options.clone()).format_node(
             &content,
             ret.program.source_text,
@@ -555,7 +579,18 @@ impl SourceFormatter {
             None,
         );
         let printed = formatted.print().ok()?.into_code();
-        Some(normalize_binding_params_layout(printed.trim()))
+        if binding.contains('\n') || binding.contains('\r') || binding.contains('`') {
+            let result = printed.trim().to_string();
+            if is_v_for_binding_left && include_parens {
+                return Some(normalize_v_for_binding_left_layout(&result));
+            }
+            return Some(result);
+        }
+        let result = normalize_binding_params_layout(printed.trim());
+        if is_v_for_binding_left && include_parens {
+            return Some(normalize_v_for_binding_left_layout(&result));
+        }
+        Some(result)
     }
 
     fn format_vue_inline_expression(
@@ -760,6 +795,61 @@ fn should_format_vue_binding_attribute(attr_name: &str) -> bool {
     attr_name == "v-slot" || attr_name.starts_with("v-slot:") || attr_name.starts_with('#')
 }
 
+fn split_v_for_expression(expression: &str) -> Option<(&str, &str, &str)> {
+    let mut paren_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_template = false;
+    let mut escaped = false;
+    let bytes = expression.as_bytes();
+    let mut idx = 0usize;
+
+    while idx < bytes.len() {
+        let ch = bytes[idx] as char;
+
+        if escaped {
+            escaped = false;
+            idx += 1;
+            continue;
+        }
+
+        match ch {
+            '\\' if in_single || in_double || in_template => escaped = true,
+            '\'' if !in_double && !in_template => in_single = !in_single,
+            '"' if !in_single && !in_template => in_double = !in_double,
+            '`' if !in_single && !in_double => in_template = !in_template,
+            '(' if !in_single && !in_double && !in_template => paren_depth += 1,
+            ')' if !in_single && !in_double && !in_template && paren_depth > 0 => paren_depth -= 1,
+            '[' if !in_single && !in_double && !in_template => bracket_depth += 1,
+            ']' if !in_single && !in_double && !in_template && bracket_depth > 0 => {
+                bracket_depth -= 1;
+            }
+            '{' if !in_single && !in_double => brace_depth += 1,
+            '}' if !in_single && !in_double && brace_depth > 0 => brace_depth -= 1,
+            _ => {}
+        }
+
+        if !(in_single || in_double || in_template)
+            && paren_depth == 0
+            && brace_depth == 0
+            && bracket_depth == 0
+        {
+            if expression[idx..].starts_with(" in ") {
+                return Some((&expression[..idx], "in", &expression[idx + 4..]));
+            }
+            if expression[idx..].starts_with(" of ") {
+                return Some((&expression[..idx], "of", &expression[idx + 4..]));
+            }
+        }
+
+        idx += 1;
+    }
+
+    None
+}
+
 fn normalize_binding_params_layout(input: &str) -> String {
     if !input.contains('\n') && !input.contains('\r') {
         return input.to_string();
@@ -768,6 +858,10 @@ fn normalize_binding_params_layout(input: &str) -> String {
     let compact =
         input.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ");
     compact.replace(", }", " }").replace(", ]", " ]")
+}
+
+fn normalize_v_for_binding_left_layout(input: &str) -> String {
+    input.replace("( ", "(").replace(" )", ")")
 }
 
 fn strip_redundant_wrapping_parens(input: &str) -> &str {
@@ -863,8 +957,18 @@ mod tests {
     #[test]
     fn test_format_vue_binding_params() {
         let formatter = SourceFormatter::new(1);
-        let params =
-            formatter.format_vue_binding_params("{foo=1,bar}", &FormatOptions::default()).unwrap();
+        let params = formatter
+            .format_vue_binding_params("{foo=1,bar}", &FormatOptions::default(), false)
+            .unwrap();
         assert_eq!(params, "{ foo = 1, bar }");
+    }
+
+    #[test]
+    fn test_format_vue_v_for_expression() {
+        let formatter = SourceFormatter::new(1);
+        let expression = formatter
+            .format_vue_v_for_expression("(item,index) in items", &FormatOptions::default())
+            .unwrap();
+        assert_eq!(expression, "(item, index) in items");
     }
 }

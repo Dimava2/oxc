@@ -43,6 +43,24 @@ describe("experimentalVueInternal differential report", () => {
       name: "edge/v-slot-bindings.vue",
       content: '<template><Comp v-slot="{foo=1,bar}">{{foo+bar}}</Comp></template>\n',
     },
+    {
+      name: "edge/vue-bindings-multiline-template-literal.vue",
+      content: `<template>
+  <Comp
+    #default="{ a = \`line
+\${foo}\` }"
+  >{{ a }}</Comp>
+</template>
+`,
+    },
+    {
+      name: "edge/vue-for-multiline-template-literal.vue",
+      content: `<template>
+  <div v-for="(item = \`line
+\${foo}\`, index) in items">{{ item }} - {{ index }}</div>
+</template>
+`,
+    },
   );
 
   it.each([
