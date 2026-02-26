@@ -337,6 +337,12 @@ impl SourceFormatter {
             }
         }
 
+        if has_unsupported_multiline_directive_template_literal(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support multiline template-literal directives yet",
+            ));
+        }
+
         let script_blocks = super::vue_sfc::parse_script_blocks(source_text);
 
         let vue_indent_script_and_style = external_options
@@ -795,6 +801,59 @@ fn should_format_vue_binding_attribute(attr_name: &str) -> bool {
     attr_name == "v-slot" || attr_name.starts_with("v-slot:") || attr_name.starts_with('#')
 }
 
+fn has_unsupported_multiline_directive_template_literal(source_text: &str) -> bool {
+    let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
+    template_blocks.into_iter().any(|block| {
+        let content = &source_text[block.content_start..block.content_end];
+        let bytes = content.as_bytes();
+        let mut i = 0usize;
+        while i + 1 < bytes.len() {
+            if bytes[i] != b'=' || !matches!(bytes[i + 1], b'"' | b'\'') {
+                i += 1;
+                continue;
+            }
+
+            let quote = bytes[i + 1];
+            let mut name_start = i;
+            while name_start > 0 {
+                let ch = bytes[name_start - 1] as char;
+                if ch.is_whitespace() || matches!(ch, '<' | '/') {
+                    break;
+                }
+                name_start -= 1;
+            }
+            let attr_name = &content[name_start..i];
+
+            let value_start = i + 2;
+            let mut value_end = value_start;
+            while value_end < bytes.len() {
+                if bytes[value_end] == quote
+                    && (value_end == value_start || bytes[value_end - 1] != b'\\')
+                {
+                    break;
+                }
+                value_end += 1;
+            }
+            if value_end >= bytes.len() {
+                break;
+            }
+
+            let is_directive_like = attr_name == "v-for"
+                || should_format_vue_binding_attribute(attr_name)
+                || should_format_vue_directive_attribute(attr_name);
+            if is_directive_like {
+                let value = &content[value_start..value_end];
+                if value.contains('`') && (value.contains('\n') || value.contains('\r')) {
+                    return true;
+                }
+            }
+
+            i = value_end + 1;
+        }
+        false
+    })
+}
+
 fn split_v_for_expression(expression: &str) -> Option<(&str, &str, &str)> {
     let mut paren_depth = 0usize;
     let mut brace_depth = 0usize;
@@ -970,5 +1029,22 @@ mod tests {
             .format_vue_v_for_expression("(item,index) in items", &FormatOptions::default())
             .unwrap();
         assert_eq!(expression, "(item, index) in items");
+    }
+
+    #[test]
+    fn test_detects_unsupported_multiline_directive_template_literal() {
+        let source = r#"
+<template>
+  <Comp #default="{ a = `line
+${foo}` }">{{ a }}</Comp>
+</template>
+"#;
+        assert!(super::has_unsupported_multiline_directive_template_literal(source));
+    }
+
+    #[test]
+    fn test_allows_simple_directive_template_literal() {
+        let source = r#"<template><Comp :label="`${foo}`">{{ foo }}</Comp></template>"#;
+        assert!(!super::has_unsupported_multiline_directive_template_literal(source));
     }
 }
