@@ -31,3 +31,14 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should format .vue w/ sor
 </template>
 "
 `;
+
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format script blocks in staged internal vue mode 1`] = `
+"
+<script lang="ts" setup>
+  import a from "a";
+  import z from "z";
+  const answer = 1;
+</script>
+<template>   <div>{{answer}}</div> </template>
+"
+`;

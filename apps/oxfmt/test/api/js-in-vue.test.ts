@@ -52,4 +52,23 @@ const cls = clsx("p-4 flex");
     expect(result.code).toMatchSnapshot();
     expect(result.errors).toStrictEqual([]);
   });
+
+  it("should format script blocks in staged internal vue mode", async () => {
+    const input = `
+<script lang="ts" setup>
+import z from "z";
+  import a from "a";
+const answer=1
+</script>
+<template>   <div>{{answer}}</div> </template>
+`;
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+      vueIndentScriptAndStyle: true,
+      experimentalSortImports: {},
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
 });
