@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":80} 1`] = `
+exports[`experimentalVueInternal differential report > report summary > produces differential summary {"printWidth":80} 1`] = `
 {
   "changedFromInput": 8,
   "equalToPrettier": 8,
@@ -16,11 +16,11 @@ exports[`experimentalVueInternal differential report > produces differential sum
   },
   "mismatchSample": [],
   "mismatches": 0,
-  "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
+  "note": "Set OXFMT_VUE_CONFORMANCE_USE_PRETTIER_FIXTURES=1 and run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;
 
-exports[`experimentalVueInternal differential report > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
+exports[`experimentalVueInternal differential report > report summary > produces differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
 {
   "changedFromInput": 8,
   "equalToPrettier": 8,
@@ -36,6 +36,6 @@ exports[`experimentalVueInternal differential report > produces differential sum
   },
   "mismatchSample": [],
   "mismatches": 0,
-  "note": "Run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
+  "note": "Set OXFMT_VUE_CONFORMANCE_USE_PRETTIER_FIXTURES=1 and run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
 }
 `;

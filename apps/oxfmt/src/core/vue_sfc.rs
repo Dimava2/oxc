@@ -13,6 +13,13 @@ pub(super) struct VueTemplateBlock {
     pub content_end: usize,
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(not(feature = "napi"), allow(dead_code))]
+pub(super) struct VueStyleBlock {
+    pub content_start: usize,
+    pub content_end: usize,
+}
+
 /// Parse all `<script ...>...</script>` blocks from a Vue SFC source.
 ///
 /// This lightweight parser is intended for staged internal Vue formatting:
@@ -36,6 +43,14 @@ pub(super) fn parse_template_blocks(source_text: &str) -> Vec<VueTemplateBlock> 
             content_start: raw.content_start,
             content_end: raw.content_end,
         })
+        .collect()
+}
+
+/// Parse all `<style ...>...</style>` blocks from a Vue SFC source.
+pub(super) fn parse_style_blocks(source_text: &str) -> Vec<VueStyleBlock> {
+    parse_blocks_by_tag(source_text, "style")
+        .into_iter()
+        .map(|raw| VueStyleBlock { content_start: raw.content_start, content_end: raw.content_end })
         .collect()
 }
 
@@ -144,7 +159,7 @@ fn extract_lang_attribute(open_tag_content: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_script_blocks, parse_template_blocks};
+    use super::{parse_script_blocks, parse_style_blocks, parse_template_blocks};
 
     #[test]
     fn parses_multiple_script_blocks() {
@@ -179,5 +194,17 @@ mod tests {
         assert_eq!(blocks.len(), 1);
         let content = &source[blocks[0].content_start..blocks[0].content_end];
         assert_eq!(content, " <div> {{a}} </div> ");
+    }
+
+    #[test]
+    fn parses_style_blocks() {
+        let source = r#"
+<template><div /></template>
+<style scoped>.a { color: red; }</style>
+"#;
+        let blocks = parse_style_blocks(source);
+        assert_eq!(blocks.len(), 1);
+        let content = &source[blocks[0].content_start..blocks[0].content_end];
+        assert_eq!(content, ".a { color: red; }");
     }
 }
