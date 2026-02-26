@@ -32,6 +32,19 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should format .vue w/ sor
 "
 `;
 
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format known SFC blocks while preserving custom blocks 1`] = `
+"<script setup lang="ts">
+  const count = 1;
+</script>
+<template>
+  <div>{{ count + 1 }}</div>
+</template>
+<i18n lang="yaml">
+message: hello
+</i18n>
+"
+`;
+
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format script blocks in staged internal vue mode 1`] = `
 "
 <script lang="ts" setup>
