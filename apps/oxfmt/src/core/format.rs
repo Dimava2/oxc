@@ -362,6 +362,11 @@ impl SourceFormatter {
                 "internal Vue formatter does not support interpolation pipe expressions yet",
             ));
         }
+        if self.has_unsupported_v_for_expressions(source_text, &format_options) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support complex or invalid v-for expressions yet",
+            ));
+        }
         if has_unsupported_event_binding_expressions(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support complex event-binding expressions yet",
@@ -562,6 +567,74 @@ impl SourceFormatter {
 
         output.push_str(&input[cursor..]);
         output
+    }
+
+    fn has_unsupported_v_for_expressions(
+        &self,
+        source_text: &str,
+        format_options: &FormatOptions,
+    ) -> bool {
+        let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
+
+        template_blocks.into_iter().any(|block| {
+            let content = &source_text[block.content_start..block.content_end];
+            let bytes = content.as_bytes();
+            let mut idx = 0usize;
+
+            while idx + 1 < bytes.len() {
+                if bytes[idx] != b'=' || !matches!(bytes[idx + 1], b'"' | b'\'') {
+                    idx += 1;
+                    continue;
+                }
+
+                let quote = bytes[idx + 1];
+                let mut name_start = idx;
+                while name_start > 0 {
+                    let ch = bytes[name_start - 1] as char;
+                    if ch.is_whitespace() || matches!(ch, '<' | '/') {
+                        break;
+                    }
+                    name_start -= 1;
+                }
+                let attr_name = &content[name_start..idx];
+
+                let value_start = idx + 2;
+                let mut value_end = value_start;
+                while value_end < bytes.len() {
+                    if bytes[value_end] == quote
+                        && (value_end == value_start || bytes[value_end - 1] != b'\\')
+                    {
+                        break;
+                    }
+                    value_end += 1;
+                }
+                if value_end >= bytes.len() {
+                    break;
+                }
+
+                if attr_name == "v-for" {
+                    let value = content[value_start..value_end].trim();
+                    let Some((left, _, right)) = split_v_for_expression(value) else {
+                        return true;
+                    };
+
+                    let left = strip_redundant_wrapping_parens(left.trim());
+                    if self.format_vue_binding_params(left, format_options, true).is_none() {
+                        return true;
+                    }
+                    if self
+                        .format_vue_inline_expression(right.trim(), format_options)
+                        .is_none()
+                    {
+                        return true;
+                    }
+                }
+
+                idx = value_end + 1;
+            }
+
+            false
+        })
     }
 
     fn format_vue_v_for_expression(
@@ -1586,6 +1659,28 @@ ${foo}` }">{{ a }}</Comp>
     fn test_allows_logical_or_in_interpolations() {
         let source = r#"<template>{{ a || b }}</template>"#;
         assert!(!super::has_unsupported_interpolation_pipes(source));
+    }
+
+    #[test]
+    fn test_detects_unsupported_v_for_expressions() {
+        let formatter = SourceFormatter::new(1);
+        let source = r#"
+<template>
+  <div v-for="item instanceof items"></div>
+</template>
+"#;
+        assert!(formatter.has_unsupported_v_for_expressions(source, &FormatOptions::default()));
+    }
+
+    #[test]
+    fn test_allows_simple_v_for_expressions() {
+        let formatter = SourceFormatter::new(1);
+        let source = r#"
+<template>
+  <div v-for="(item, index) in items"></div>
+</template>
+"#;
+        assert!(!formatter.has_unsupported_v_for_expressions(source, &FormatOptions::default()));
     }
 
     #[test]
