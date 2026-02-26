@@ -53,6 +53,14 @@ describe("experimentalVueInternal differential report", () => {
           equalsPrettier: internalResult === prettierResult,
           changedFromInput: internalResult !== content,
           isError: internalResult === "ERROR",
+          templateParity:
+            internalResult !== "ERROR" &&
+            prettierResult !== "ERROR" &&
+            compareTagContents(internalResult, prettierResult, "template"),
+          scriptParity:
+            internalResult !== "ERROR" &&
+            prettierResult !== "ERROR" &&
+            compareTagContents(internalResult, prettierResult, "script"),
         };
       }),
     );
@@ -60,6 +68,25 @@ describe("experimentalVueInternal differential report", () => {
     const mismatches = records.filter((record) => !record.equalsPrettier).map((record) => record.name);
     const errors = records.filter((record) => record.isError).map((record) => record.name);
     const changedFromInput = records.filter((record) => record.changedFromInput).length;
+    const mismatchKinds = {
+      templateOnly: 0,
+      scriptOnly: 0,
+      templateAndScript: 0,
+      unresolved: 0,
+    };
+    for (const record of records) {
+      if (record.equalsPrettier || record.isError) continue;
+
+      if (record.templateParity === false && record.scriptParity === true) {
+        mismatchKinds.templateOnly += 1;
+      } else if (record.templateParity === true && record.scriptParity === false) {
+        mismatchKinds.scriptOnly += 1;
+      } else if (record.templateParity === false && record.scriptParity === false) {
+        mismatchKinds.templateAndScript += 1;
+      } else {
+        mismatchKinds.unresolved += 1;
+      }
+    }
 
     const summary = {
       fixtures: records.length,
@@ -67,6 +94,7 @@ describe("experimentalVueInternal differential report", () => {
       equalToPrettier: records.length - mismatches.length,
       mismatches: mismatches.length,
       changedFromInput,
+      mismatchKinds,
       mismatchSample: mismatches.slice(0, 10),
       errorSample: errors.slice(0, 10),
     };
@@ -127,4 +155,34 @@ async function compareWithPrettierUsingInternalMode(
   }
 
   return [internalResult, prettierResult];
+}
+
+function compareTagContents(left: string, right: string, tagName: string) {
+  const leftBlocks = extractTagContents(left, tagName);
+  const rightBlocks = extractTagContents(right, tagName);
+  return JSON.stringify(leftBlocks) === JSON.stringify(rightBlocks);
+}
+
+function extractTagContents(source: string, tagName: string): string[] {
+  const openPrefix = `<${tagName}`;
+  const closeTag = `</${tagName}>`;
+  const contents: string[] = [];
+  let cursor = 0;
+
+  while (cursor < source.length) {
+    const openStart = source.indexOf(openPrefix, cursor);
+    if (openStart === -1) break;
+
+    const openEnd = source.indexOf(">", openStart + openPrefix.length);
+    if (openEnd === -1) break;
+
+    const contentStart = openEnd + 1;
+    const closeStart = source.indexOf(closeTag, contentStart);
+    if (closeStart === -1) break;
+
+    contents.push(source.slice(contentStart, closeStart));
+    cursor = closeStart + closeTag.length;
+  }
+
+  return contents;
 }

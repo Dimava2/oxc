@@ -7,6 +7,12 @@ exports[`experimentalVueInternal differential report > produces differential sum
   "errorSample": [],
   "errors": 0,
   "fixtures": 3,
+  "mismatchKinds": {
+    "scriptOnly": 0,
+    "templateAndScript": 0,
+    "templateOnly": 3,
+    "unresolved": 0,
+  },
   "mismatchSample": [
     "edge/template-interpolation-spacing.vue",
     "edge/template-interpolation-multiline.vue",
@@ -23,6 +29,12 @@ exports[`experimentalVueInternal differential report > produces differential sum
   "errorSample": [],
   "errors": 0,
   "fixtures": 3,
+  "mismatchKinds": {
+    "scriptOnly": 0,
+    "templateAndScript": 0,
+    "templateOnly": 3,
+    "unresolved": 0,
+  },
   "mismatchSample": [
     "edge/template-interpolation-spacing.vue",
     "edge/template-interpolation-multiline.vue",
