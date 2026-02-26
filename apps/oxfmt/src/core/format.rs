@@ -510,19 +510,19 @@ impl SourceFormatter {
                 let trimmed = value.trim();
                 let normalized = self
                     .format_vue_v_for_expression(trimmed, format_options)
-                    .unwrap_or_else(|| trimmed.to_string());
+                    .unwrap_or_else(|| value.to_string());
                 output.push_str(&normalized);
             } else if should_format_vue_binding_attribute(attr_name) {
                 let trimmed = value.trim();
                 let normalized = self
                     .format_vue_binding_params(trimmed, format_options, false)
-                    .unwrap_or_else(|| trimmed.to_string());
+                    .unwrap_or_else(|| value.to_string());
                 output.push_str(&normalized);
             } else if should_format_vue_directive_attribute(attr_name) {
                 let trimmed = value.trim();
                 let normalized = self
                     .format_vue_inline_expression(trimmed, format_options)
-                    .unwrap_or_else(|| trimmed.to_string());
+                    .unwrap_or_else(|| value.to_string());
                 output.push_str(&normalized);
             } else {
                 output.push_str(value);
