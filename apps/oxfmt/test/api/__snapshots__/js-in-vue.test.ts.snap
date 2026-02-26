@@ -7,6 +7,14 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should avoid quote confli
 "
 `;
 
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should decode directive entities and format dot-bindings 1`] = `
+"<template>
+  <div v-bind:id="'list-' + id"></div>
+  <button .disabled="a && b"></button>
+</template>
+"
+`;
+
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format .vue w/ sort-imports 1`] = `
 "<script lang="ts">
   import a from "a";

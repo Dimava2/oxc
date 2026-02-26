@@ -515,23 +515,26 @@ impl SourceFormatter {
             let value = &input[value_start..value_end];
             if attr_name == "v-for" {
                 let trimmed = value.trim();
+                let decoded = decode_vue_expression_entities(trimmed);
                 let normalized = self
-                    .format_vue_v_for_expression(trimmed, format_options)
+                    .format_vue_v_for_expression(&decoded, format_options)
                     .unwrap_or_else(|| value.to_string());
                 output.push_str(&normalized);
             } else if should_format_vue_binding_attribute(attr_name) {
                 let trimmed = value.trim();
+                let decoded = decode_vue_expression_entities(trimmed);
                 let normalized = self
-                    .format_vue_binding_params(trimmed, format_options, false)
+                    .format_vue_binding_params(&decoded, format_options, false)
                     .unwrap_or_else(|| value.to_string());
                 output.push_str(&normalized);
             } else if should_format_vue_directive_attribute(attr_name) {
                 let trimmed = value.trim();
+                let decoded = decode_vue_expression_entities(trimmed);
                 let mut expression_options = format_options.clone();
                 expression_options.quote_style =
                     if quote == b'"' { QuoteStyle::Single } else { QuoteStyle::Double };
                 let normalized = self
-                    .format_vue_inline_expression(trimmed, &expression_options)
+                    .format_vue_inline_expression(&decoded, &expression_options)
                     .unwrap_or_else(|| value.to_string());
                 output.push_str(&normalized);
             } else {
@@ -911,6 +914,7 @@ fn trim_template_trailing_whitespace(input: &str, line_ending: &str) -> String {
 
 fn should_format_vue_directive_attribute(attr_name: &str) -> bool {
     attr_name.starts_with(':')
+        || attr_name.starts_with('.')
         || attr_name.starts_with('@')
         || attr_name.starts_with("v-bind:")
         || attr_name.starts_with("v-on:")
@@ -923,6 +927,19 @@ fn should_format_vue_directive_attribute(attr_name: &str) -> bool {
 
 fn should_format_vue_binding_attribute(attr_name: &str) -> bool {
     attr_name == "v-slot" || attr_name.starts_with("v-slot:") || attr_name.starts_with('#')
+}
+
+fn decode_vue_expression_entities(value: &str) -> String {
+    if !value.contains('&') {
+        return value.to_string();
+    }
+
+    value
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 fn has_style_blocks(source_text: &str) -> bool {
@@ -1282,6 +1299,18 @@ ${foo}` }">{{ a }}</Comp>
         let source = "  <div>\n    hello\n  </div>\n";
         let normalized = super::normalize_simple_text_elements(source, "\n");
         assert_eq!(normalized, "  <div>hello</div>\n");
+    }
+
+    #[test]
+    fn test_decode_vue_expression_entities() {
+        let value = "&quot;list-&quot; + &apos;x&apos; + &lt;tag&gt; + &amp;foo";
+        let decoded = super::decode_vue_expression_entities(value);
+        assert_eq!(decoded, "\"list-\" + 'x' + <tag> + &foo");
+    }
+
+    #[test]
+    fn test_formats_dot_directive_attributes() {
+        assert!(super::should_format_vue_directive_attribute(".disabled"));
     }
 
     #[test]
