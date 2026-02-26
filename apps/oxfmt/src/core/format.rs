@@ -318,11 +318,10 @@ impl SourceFormatter {
         &self,
         source_text: &str,
         path: &Path,
-        _format_options: FormatOptions,
-        _external_options: &Value,
+        format_options: FormatOptions,
+        external_options: &Value,
         _vue_oxc_toolkit_spike: bool,
     ) -> Result<String, OxcDiagnostic> {
-        let _ = (source_text, path);
         #[cfg(feature = "vue_oxc_toolkit_spike")]
         if _vue_oxc_toolkit_spike || std::env::var_os("OXFMT_VUE_OXC_TOOLKIT_SPIKE").is_some() {
             let report = super::vue_oxc_toolkit_spike::parse_report(source_text);
@@ -334,7 +333,56 @@ impl SourceFormatter {
             }
         }
 
-        Err(OxcDiagnostic::error("internal Vue formatter is staged but not implemented yet"))
+        let script_blocks = super::vue_sfc::parse_script_blocks(source_text);
+        if script_blocks.is_empty() {
+            return Ok(source_text.to_string());
+        }
+
+        let vue_indent_script_and_style = external_options
+            .as_object()
+            .and_then(|obj| obj.get("vueIndentScriptAndStyle"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let indent = if vue_indent_script_and_style {
+            if format_options.indent_style.is_tab() {
+                "\t".to_string()
+            } else {
+                " ".repeat(usize::from(format_options.indent_width.value()))
+            }
+        } else {
+            String::new()
+        };
+        let line_ending = std::str::from_utf8(format_options.line_ending.as_bytes())
+            .expect("line ending bytes should be valid utf-8");
+
+        let mut output = source_text.to_string();
+        for block in script_blocks.iter().rev() {
+            let original = &source_text[block.content_start..block.content_end];
+            if original.trim().is_empty() {
+                continue;
+            }
+
+            let Some(source_type) = source_type_from_vue_script_lang(block.lang.as_deref()) else {
+                continue;
+            };
+            let formatted = self.format_by_oxc_formatter(
+                original,
+                path,
+                source_type,
+                format_options.clone(),
+                external_options.clone(),
+                Some(path),
+            )?;
+
+            let replacement = wrap_formatted_vue_script(
+                &formatted,
+                line_ending,
+                if vue_indent_script_and_style { Some(indent.as_str()) } else { None },
+            );
+            output.replace_range(block.content_start..block.content_end, &replacement);
+        }
+
+        Ok(output)
     }
 
     /// Format `package.json`: optionally sort then format by external formatter.
@@ -373,5 +421,84 @@ impl SourceFormatter {
             false,
             false,
         )
+    }
+}
+
+fn source_type_from_vue_script_lang(lang: Option<&str>) -> Option<SourceType> {
+    let extension = match lang {
+        None => "mjs",
+        Some("js" | "javascript") => "mjs",
+        Some("ts" | "typescript") => "ts",
+        Some("tsx") => "tsx",
+        Some("jsx") => "jsx",
+        Some(other) => other,
+    };
+
+    let Ok(mut source_type) = SourceType::from_extension(extension) else {
+        return None;
+    };
+
+    // Vue script blocks are module-oriented by default.
+    if source_type.is_unambiguous() {
+        source_type = source_type.with_module(true);
+    }
+
+    // Keep non-JSX scripts in standard mode where applicable.
+    if !extension.contains('x') {
+        source_type = source_type.with_standard(true);
+    }
+
+    Some(source_type)
+}
+
+fn wrap_formatted_vue_script(formatted: &str, line_ending: &str, indent: Option<&str>) -> String {
+    let trimmed = formatted.trim_end();
+    if trimmed.is_empty() {
+        return line_ending.to_string();
+    }
+
+    let mut output = String::new();
+    output.push_str(line_ending);
+
+    for line in trimmed.lines() {
+        if let Some(indent) = indent
+            && !line.is_empty()
+        {
+            output.push_str(indent);
+        }
+        output.push_str(line);
+        output.push_str(line_ending);
+    }
+
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{source_type_from_vue_script_lang, wrap_formatted_vue_script};
+
+    #[test]
+    fn test_source_type_from_vue_script_lang() {
+        let source_type = source_type_from_vue_script_lang(None).unwrap();
+        assert!(source_type.is_module());
+
+        let source_type = source_type_from_vue_script_lang(Some("ts")).unwrap();
+        assert!(source_type.is_typescript());
+        assert!(source_type.is_module());
+
+        let source_type = source_type_from_vue_script_lang(Some("tsx")).unwrap();
+        assert!(source_type.is_typescript());
+        assert!(source_type.is_jsx());
+    }
+
+    #[test]
+    fn test_wrap_formatted_vue_script() {
+        let code = "const a = 1;\nconst b = 2;\n";
+
+        let wrapped = wrap_formatted_vue_script(code, "\n", None);
+        assert_eq!(wrapped, "\nconst a = 1;\nconst b = 2;\n");
+
+        let wrapped = wrap_formatted_vue_script(code, "\n", Some("  "));
+        assert_eq!(wrapped, "\n  const a = 1;\n  const b = 2;\n");
     }
 }

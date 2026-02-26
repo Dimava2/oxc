@@ -3,6 +3,7 @@ mod format;
 pub mod oxfmtrc;
 mod support;
 pub mod utils;
+mod vue_sfc;
 
 #[cfg(feature = "napi")]
 mod external_formatter;
