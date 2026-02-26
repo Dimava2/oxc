@@ -82,6 +82,16 @@ const answer=1
     expect(result.errors).toStrictEqual([]);
   });
 
+  it("should format interpolation filters in staged internal mode", async () => {
+    const input = "<template>{{value|filterA|filterB}}</template>\n";
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
   it("should format known SFC blocks while preserving custom blocks", async () => {
     const input = `
 <script setup lang="ts">

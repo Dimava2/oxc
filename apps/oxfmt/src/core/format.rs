@@ -352,11 +352,6 @@ impl SourceFormatter {
                 "internal Vue formatter does not support multiline open tags yet",
             ));
         }
-        if has_unsupported_interpolation_filters(source_text) {
-            return Err(OxcDiagnostic::error(
-                "internal Vue formatter does not support interpolation filter pipes yet",
-            ));
-        }
         if has_unsupported_event_binding_expressions(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support complex event-binding expressions yet",
@@ -979,35 +974,6 @@ fn has_unsupported_multiline_open_tags_in_template(source_text: &str) -> bool {
     })
 }
 
-fn has_unsupported_interpolation_filters(source_text: &str) -> bool {
-    let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
-    template_blocks.into_iter().any(|block| {
-        let content = &source_text[block.content_start..block.content_end];
-        let mut cursor = 0usize;
-        while let Some(start_rel) = content[cursor..].find("{{") {
-            let start = cursor + start_rel + 2;
-            let Some(end_rel) = content[start..].find("}}") else {
-                break;
-            };
-            let end = start + end_rel;
-            let expr = &content[start..end];
-            let expr_bytes = expr.as_bytes();
-            for idx in 0..expr_bytes.len() {
-                if expr_bytes[idx] != b'|' {
-                    continue;
-                }
-                let prev_is_pipe = idx > 0 && expr_bytes[idx - 1] == b'|';
-                let next_is_pipe = idx + 1 < expr_bytes.len() && expr_bytes[idx + 1] == b'|';
-                if !prev_is_pipe && !next_is_pipe {
-                    return true;
-                }
-            }
-            cursor = end + 2;
-        }
-        false
-    })
-}
-
 fn has_unsupported_event_binding_expressions(source_text: &str) -> bool {
     let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
     template_blocks.into_iter().any(|block| {
@@ -1357,14 +1323,6 @@ ${foo}` }">{{ a }}</Comp>
 "#;
         let normalized = super::normalize_unindented_template_lines(source, "  ", "\n");
         assert!(normalized.contains("\n  <span>{{(a||          b)}} {{z&&(a&&b)}}</span>\n"));
-    }
-
-    #[test]
-    fn test_detects_interpolation_filter_pipes() {
-        let source = r#"<template>{{ value | filter }}</template>"#;
-        assert!(super::has_unsupported_interpolation_filters(source));
-        let source = r#"<template>{{ a || b }}</template>"#;
-        assert!(!super::has_unsupported_interpolation_filters(source));
     }
 
     #[test]

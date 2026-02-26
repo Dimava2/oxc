@@ -32,6 +32,11 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should format .vue w/ sor
 "
 `;
 
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format interpolation filters in staged internal mode 1`] = `
+"<template>{{ value | filterA | filterB }}</template>
+"
+`;
+
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format known SFC blocks while preserving custom blocks 1`] = `
 "<script setup lang="ts">
   const count = 1;
