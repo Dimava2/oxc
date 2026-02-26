@@ -352,11 +352,6 @@ impl SourceFormatter {
                 "internal Vue formatter does not support multiline open tags yet",
             ));
         }
-        if has_unindented_template_content_lines(source_text) {
-            return Err(OxcDiagnostic::error(
-                "internal Vue formatter does not support unindented multiline template content yet",
-            ));
-        }
         if has_unsupported_interpolation_filters(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support interpolation filter pipes yet",
@@ -449,6 +444,8 @@ impl SourceFormatter {
         let normalized = self.normalize_vue_directive_expressions(content, format_options);
         let normalized = self.normalize_vue_interpolations(&normalized, format_options);
         let normalized = normalize_template_literal_placeholders(&normalized);
+        let normalized = normalize_unindented_template_lines(&normalized, indent, line_ending);
+        let normalized = normalize_simple_text_elements(&normalized, line_ending);
         let normalized = normalize_single_root_template_layout(&normalized, line_ending, indent);
         trim_template_trailing_whitespace(&normalized, line_ending)
     }
@@ -640,10 +637,8 @@ impl SourceFormatter {
 
         let wrapped = format!("const __oxfmt_vue_expr__ = {expression};");
         for extension in ["mjs", "ts"] {
-            let source_type = SourceType::from_extension(extension)
-                .ok()?
-                .with_module(true)
-                .with_standard(true);
+            let source_type =
+                SourceType::from_extension(extension).ok()?.with_module(true).with_standard(true);
             let allocator = self.allocator_pool.get();
             let ret = Parser::new(&allocator, &wrapped, source_type)
                 .with_options(get_parse_options())
@@ -785,6 +780,109 @@ fn normalize_template_literal_placeholders(input: &str) -> String {
 
     output.push_str(&input[cursor..]);
     output
+}
+
+fn normalize_unindented_template_lines(input: &str, indent: &str, line_ending: &str) -> String {
+    if !(input.contains('\n') || input.contains('\r')) {
+        return input.to_string();
+    }
+
+    let lines: Vec<&str> = input.lines().collect();
+    let base_indent = lines
+        .iter()
+        .filter_map(|line| {
+            let trimmed = line.trim_start_matches([' ', '\t']);
+            if trimmed.is_empty() || trimmed.len() == line.len() {
+                return None;
+            }
+            Some(&line[..line.len() - trimmed.len()])
+        })
+        .min_by_key(|value| value.len())
+        .unwrap_or(indent);
+
+    let mut output = String::new();
+    for (idx, line) in lines.iter().enumerate() {
+        if idx > 0 {
+            output.push_str(line_ending);
+        }
+
+        let trimmed = line.trim_start_matches([' ', '\t']);
+        if !trimmed.is_empty()
+            && trimmed.len() == line.len()
+            && (trimmed.starts_with('<') || trimmed.starts_with("{{"))
+        {
+            output.push_str(base_indent);
+            output.push_str(trimmed);
+        } else {
+            output.push_str(line);
+        }
+    }
+
+    if input.ends_with('\n') || input.ends_with('\r') {
+        output.push_str(line_ending);
+    }
+    output
+}
+
+fn normalize_simple_text_elements(input: &str, line_ending: &str) -> String {
+    let mut lines: Vec<String> = input.lines().map(ToString::to_string).collect();
+    let mut idx = 0usize;
+
+    while idx + 2 < lines.len() {
+        let open_line = lines[idx].clone();
+        let text_line = lines[idx + 1].clone();
+        let close_line = lines[idx + 2].clone();
+
+        let open_trim = open_line.trim();
+        let text_trim = text_line.trim();
+        let close_trim = close_line.trim();
+
+        let open_indent_len = open_line.len() - open_line.trim_start_matches([' ', '\t']).len();
+        let close_indent_len = close_line.len() - close_line.trim_start_matches([' ', '\t']).len();
+        let same_indent = open_indent_len == close_indent_len;
+
+        if same_indent
+            && !text_trim.is_empty()
+            && !text_trim.starts_with('<')
+            && is_simple_open_tag(open_trim)
+            && is_matching_close_tag(open_trim, close_trim)
+        {
+            let indent_prefix = &open_line[..open_indent_len];
+            let collapsed = format!("{indent_prefix}{open_trim}{text_trim}{close_trim}");
+            lines.splice(idx..=idx + 2, [collapsed]);
+            continue;
+        }
+        idx += 1;
+    }
+
+    let mut output = lines.join(line_ending);
+    if input.ends_with('\n') || input.ends_with('\r') {
+        output.push_str(line_ending);
+    }
+    output
+}
+
+fn is_simple_open_tag(line: &str) -> bool {
+    line.starts_with('<')
+        && !line.starts_with("</")
+        && !line.starts_with("<!")
+        && !line.ends_with("/>")
+        && line.ends_with('>')
+}
+
+fn is_matching_close_tag(open: &str, close: &str) -> bool {
+    if !close.starts_with("</") || !close.ends_with('>') {
+        return false;
+    }
+    let open_name = extract_tag_name(open.trim_start_matches('<'));
+    let close_name = extract_tag_name(close.trim_start_matches("</"));
+    matches!((open_name, close_name), (Some(open), Some(close)) if open == close)
+}
+
+fn extract_tag_name(value: &str) -> Option<&str> {
+    let end =
+        value.find(|ch: char| ch.is_whitespace() || ch == '>' || ch == '/').unwrap_or(value.len());
+    if end == 0 { None } else { Some(&value[..end]) }
 }
 
 fn normalize_single_root_template_layout(input: &str, line_ending: &str, indent: &str) -> String {
@@ -943,29 +1041,6 @@ fn has_unsupported_multiline_open_tags_in_template(source_text: &str) -> bool {
         }
 
         false
-    })
-}
-
-fn has_unindented_template_content_lines(source_text: &str) -> bool {
-    let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
-    template_blocks.into_iter().any(|block| {
-        let content = &source_text[block.content_start..block.content_end];
-        if !(content.contains('\n') || content.contains('\r')) {
-            return false;
-        }
-
-        content.lines().any(|line| {
-            if line.is_empty() {
-                return false;
-            }
-            let trimmed_start = line.trim_start_matches([' ', '\t']);
-            if trimmed_start.is_empty() {
-                return false;
-            }
-            let has_leading_indent = trimmed_start.len() != line.len();
-            !has_leading_indent
-                && (trimmed_start.starts_with('<') || trimmed_start.starts_with("{{"))
-        })
     })
 }
 
@@ -1359,13 +1434,14 @@ ${foo}` }">{{ a }}</Comp>
     }
 
     #[test]
-    fn test_detects_unindented_template_content_lines() {
+    fn test_normalize_unindented_template_content_lines() {
         let source = r#"
 <template>
 <span>{{(a||          b)}} {{z&&(a&&b)}}</span>
 </template>
 "#;
-        assert!(super::has_unindented_template_content_lines(source));
+        let normalized = super::normalize_unindented_template_lines(source, "  ", "\n");
+        assert!(normalized.contains("\n  <span>{{(a||          b)}} {{z&&(a&&b)}}</span>\n"));
     }
 
     #[test]
@@ -1374,6 +1450,13 @@ ${foo}` }">{{ a }}</Comp>
         assert!(super::has_unsupported_interpolation_filters(source));
         let source = r#"<template>{{ a || b }}</template>"#;
         assert!(!super::has_unsupported_interpolation_filters(source));
+    }
+
+    #[test]
+    fn test_normalize_simple_text_elements() {
+        let source = "  <div>\n    hello\n  </div>\n";
+        let normalized = super::normalize_simple_text_elements(source, "\n");
+        assert_eq!(normalized, "  <div>hello</div>\n");
     }
 
     #[test]

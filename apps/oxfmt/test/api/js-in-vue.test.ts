@@ -155,8 +155,7 @@ let x = 1;
   });
 
   it("should fallback to external formatter for unindented multiline template content", async () => {
-    const input = `
-<template>
+    const input = `<template>
 <span>{{(a||          b)}} {{z&&(a&&b)}}</span>
 </template>
 `;
