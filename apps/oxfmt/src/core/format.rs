@@ -416,7 +416,7 @@ impl SourceFormatter {
             output.replace_range(block.content_start..block.content_end, &formatted);
         }
 
-        Ok(output)
+        Ok(trim_extra_trailing_line_endings(output, line_ending))
     }
 
     fn format_vue_template_block_mvp(
@@ -1006,6 +1006,15 @@ fn trim_template_trailing_whitespace(input: &str, line_ending: &str) -> String {
     output
 }
 
+fn trim_extra_trailing_line_endings(mut input: String, line_ending: &str) -> String {
+    let double_line_ending = format!("{line_ending}{line_ending}");
+    while input.ends_with(&double_line_ending) {
+        let new_len = input.len().saturating_sub(line_ending.len());
+        input.truncate(new_len);
+    }
+    input
+}
+
 fn should_format_vue_directive_attribute(attr_name: &str) -> bool {
     attr_name.starts_with(':')
         || attr_name.starts_with('.')
@@ -1411,6 +1420,13 @@ ${foo}` }">{{ a }}</Comp>
         let source = "  <div>\n    hello\n  </div>\n";
         let normalized = super::normalize_simple_text_elements(source, "\n");
         assert_eq!(normalized, "  <div>hello</div>\n");
+    }
+
+    #[test]
+    fn test_trim_extra_trailing_line_endings() {
+        let input = "<template></template>\n\n".to_string();
+        let trimmed = super::trim_extra_trailing_line_endings(input, "\n");
+        assert_eq!(trimmed, "<template></template>\n");
     }
 
     #[test]
