@@ -111,6 +111,10 @@ export type FormatOptions = Pick<
   sortTailwindcss?: SortTailwindcssOptions;
   /** @deprecated Use `sortTailwindcss` instead. */
   experimentalTailwindcss?: SortTailwindcssOptions;
+  /** Route `.vue` files through the staged internal Vue formatting strategy. (Default: `false`) */
+  experimentalVueInternal?: boolean;
+  /** Run internal vue_oxc_toolkit parser spike before formatting `.vue` files. (Default: `false`) */
+  experimentalVueOxcToolkitSpike?: boolean;
 } & Record<string, unknown>; // Also allow additional options for we don't have typed yet.
 
 /**

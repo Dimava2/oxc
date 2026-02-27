@@ -1,0 +1,41 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`experimentalVueInternal differential report > report summary > produces edge-only differential summary {"printWidth":80} 1`] = `
+{
+  "changedFromInput": 8,
+  "equalToPrettier": 8,
+  "errorSample": [],
+  "errors": 0,
+  "fixtureSource": "edge-only",
+  "fixtures": 8,
+  "mismatchKinds": {
+    "scriptOnly": 0,
+    "templateAndScript": 0,
+    "templateOnly": 0,
+    "unresolved": 0,
+  },
+  "mismatchSample": [],
+  "mismatches": 0,
+  "note": "Set OXFMT_VUE_CONFORMANCE_USE_PRETTIER_FIXTURES=1 and run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
+}
+`;
+
+exports[`experimentalVueInternal differential report > report summary > produces edge-only differential summary {"printWidth":100,"vueIndentScriptAndStyle":true,"singleQuote":true} 1`] = `
+{
+  "changedFromInput": 8,
+  "equalToPrettier": 8,
+  "errorSample": [],
+  "errors": 0,
+  "fixtureSource": "edge-only",
+  "fixtures": 8,
+  "mismatchKinds": {
+    "scriptOnly": 0,
+    "templateAndScript": 0,
+    "templateOnly": 0,
+    "unresolved": 0,
+  },
+  "mismatchSample": [],
+  "mismatches": 0,
+  "note": "Set OXFMT_VUE_CONFORMANCE_USE_PRETTIER_FIXTURES=1 and run \`pnpm download-prettier-fixtures\` in apps/oxfmt for broader differential coverage",
+}
+`;

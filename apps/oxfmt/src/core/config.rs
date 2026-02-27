@@ -95,7 +95,20 @@ pub enum ResolvedOptions {
     OxfmtToml { toml_options: TomlFormatterOptions, insert_final_newline: bool },
     /// For non-JS files formatted by external formatter (Prettier).
     #[cfg(feature = "napi")]
-    ExternalFormatter { external_options: Value, insert_final_newline: bool },
+    ExternalFormatter {
+        external_options: Value,
+        vue_internal: bool,
+        vue_oxc_toolkit_spike: bool,
+        insert_final_newline: bool,
+    },
+    /// For `.vue` files routed to the staged internal strategy.
+    #[cfg(feature = "napi")]
+    OxcVueFormatter {
+        format_options: Box<FormatOptions>,
+        external_options: Value,
+        vue_oxc_toolkit_spike: bool,
+        insert_final_newline: bool,
+    },
     /// For `package.json` files: optionally sorted then formatted.
     #[cfg(feature = "napi")]
     ExternalFormatterPackageJson {
@@ -118,8 +131,14 @@ impl ResolvedOptions {
         finalize_external_options(&mut external_options, strategy);
 
         #[cfg(feature = "napi")]
-        let OxfmtOptions { format_options, toml_options, sort_package_json, insert_final_newline } =
-            oxfmt_options;
+        let OxfmtOptions {
+            format_options,
+            toml_options,
+            sort_package_json,
+            insert_final_newline,
+            vue_internal,
+            vue_oxc_toolkit_spike,
+        } = oxfmt_options;
         #[cfg(not(feature = "napi"))]
         let OxfmtOptions { format_options, toml_options, insert_final_newline, .. } = oxfmt_options;
 
@@ -134,8 +153,22 @@ impl ResolvedOptions {
                 ResolvedOptions::OxfmtToml { toml_options, insert_final_newline }
             }
             #[cfg(feature = "napi")]
-            FormatFileStrategy::ExternalFormatter { .. } => {
-                ResolvedOptions::ExternalFormatter { external_options, insert_final_newline }
+            FormatFileStrategy::ExternalFormatter { parser_name, .. } => {
+                if *parser_name == "vue" && vue_internal {
+                    ResolvedOptions::OxcVueFormatter {
+                        format_options: Box::new(format_options),
+                        external_options,
+                        vue_oxc_toolkit_spike,
+                        insert_final_newline,
+                    }
+                } else {
+                    ResolvedOptions::ExternalFormatter {
+                        external_options,
+                        vue_internal,
+                        vue_oxc_toolkit_spike,
+                        insert_final_newline,
+                    }
+                }
             }
             #[cfg(feature = "napi")]
             FormatFileStrategy::ExternalFormatterPackageJson { .. } => {
@@ -523,5 +556,30 @@ fn apply_editorconfig(config: &mut FormatConfig, props: &EditorConfigProperties)
         && let EditorConfigProperty::Value(v) = props.insert_final_newline
     {
         config.insert_final_newline = Some(v);
+    }
+}
+
+#[cfg(all(test, feature = "napi"))]
+mod tests {
+    use std::path::PathBuf;
+
+    use serde_json::json;
+
+    use super::{FormatFileStrategy, ResolvedOptions, resolve_options_from_value};
+
+    #[test]
+    fn test_experimental_vue_internal_routes_to_staged_internal_options() {
+        let strategy = FormatFileStrategy::ExternalFormatter {
+            path: PathBuf::from("App.vue"),
+            parser_name: "vue",
+        };
+
+        let options =
+            resolve_options_from_value(json!({ "experimentalVueInternal": true }), &strategy, None)
+                .unwrap();
+        assert!(matches!(options, ResolvedOptions::OxcVueFormatter { .. }));
+
+        let options = resolve_options_from_value(json!({}), &strategy, None).unwrap();
+        assert!(matches!(options, ResolvedOptions::ExternalFormatter { vue_internal: false, .. }));
     }
 }

@@ -52,4 +52,178 @@ const cls = clsx("p-4 flex");
     expect(result.code).toMatchSnapshot();
     expect(result.errors).toStrictEqual([]);
   });
+
+  it("should format script blocks in staged internal vue mode", async () => {
+    const input = `
+<script lang="ts" setup>
+import z from "z";
+  import a from "a";
+const answer=1
+</script>
+<template>   <div>{{answer}}</div> </template>
+`;
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+      vueIndentScriptAndStyle: true,
+      experimentalSortImports: {},
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
+  it("should format template-only vue files in staged internal mode", async () => {
+    const input = '<template>   <Comp :label="`${ foo }`">{{msg}}</Comp> </template>\n';
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
+  it("should format interpolation filters in staged internal mode", async () => {
+    const input = "<template>{{value|filterA|filterB}}</template>\n";
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
+  it("should avoid quote conflicts in directive expressions", async () => {
+    const input = `<template>
+  <div v-bind:id='"list-"+id'></div>
+</template>
+`;
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
+  it("should decode directive entities and format dot-bindings", async () => {
+    const input = `<template>
+  <div v-bind:id=" &quot;list-&quot;   +  id "></div>
+  <button .disabled="   a &&b "></button>
+</template>
+`;
+    const result = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+
+    expect(result.code).toMatchSnapshot();
+    expect(result.errors).toStrictEqual([]);
+  });
+
+  it("should fallback to external formatter for multiline template open tags", async () => {
+    const input = `<template>
+  <Comp
+    :label="foo+bar"
+    @click="count+=1"
+  >{{count}}</Comp>
+</template>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for unsupported custom SFC blocks", async () => {
+    const input = `
+<script setup lang="ts">
+const count=1
+</script>
+<template><div>{{count+1}}</div></template>
+<i18n lang="yaml">
+message: hello
+</i18n>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for unsupported complex event bindings", async () => {
+    const input = `
+<script setup lang="ts">
+let x = 1;
+</script>
+<template>
+  <div @click="if (x === (1 as number)) { x += 1; }">{{x}}</div>
+</template>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for style blocks", async () => {
+    const input = `
+<template><div class="x">{{count}}</div></template>
+<style>
+.x{ display:flex; }
+</style>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for multiline directive template literals", async () => {
+    const input = `
+<template>
+  <Comp
+    #default="{ a = \`line
+\${foo}\` }"
+  >{{ a }}</Comp>
+</template>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
+
+  it("should fallback to external formatter for unindented multiline template content", async () => {
+    const input = `<template>
+<span>{{(a||          b)}} {{z&&(a&&b)}}</span>
+</template>
+`;
+    const internal = await format("a.vue", input, {
+      experimentalVueInternal: true,
+    });
+    const external = await format("a.vue", input, {});
+
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
+  });
 });

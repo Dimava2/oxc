@@ -1,5 +1,20 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should avoid quote conflicts in directive expressions 1`] = `
+"<template>
+  <div v-bind:id='"list-" + id'></div>
+</template>
+"
+`;
+
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should decode directive entities and format dot-bindings 1`] = `
+"<template>
+  <div v-bind:id="'list-' + id"></div>
+  <button .disabled="a && b"></button>
+</template>
+"
+`;
+
 exports[`Format js-in-vue with prettier-plugin-oxfmt > should format .vue w/ sort-imports 1`] = `
 "<script lang="ts">
   import a from "a";
@@ -28,6 +43,31 @@ exports[`Format js-in-vue with prettier-plugin-oxfmt > should format .vue w/ sor
 <template>
   <div class="flex p-4">{{ count }}</div>
   <div class="flex p-4">{{ count }}</div>
+</template>
+"
+`;
+
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format interpolation filters in staged internal mode 1`] = `
+"<template>{{ value | filterA | filterB }}</template>
+"
+`;
+
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format script blocks in staged internal vue mode 1`] = `
+"
+<script lang="ts" setup>
+  import a from "a";
+  import z from "z";
+  const answer = 1;
+</script>
+<template>
+  <div>{{ answer }}</div>
+</template>
+"
+`;
+
+exports[`Format js-in-vue with prettier-plugin-oxfmt > should format template-only vue files in staged internal mode 1`] = `
+"<template>
+  <Comp :label="\`\${foo}\`">{{ msg }}</Comp>
 </template>
 "
 `;
