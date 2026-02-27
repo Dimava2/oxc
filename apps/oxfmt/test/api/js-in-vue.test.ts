@@ -119,7 +119,7 @@ const answer=1
     expect(result.errors).toStrictEqual([]);
   });
 
-  it("should format multiline open tags in staged internal mode", async () => {
+  it("should fallback to external formatter for multiline template open tags", async () => {
     const input = `<template>
   <Comp
     :label="foo+bar"
@@ -127,12 +127,14 @@ const answer=1
   >{{count}}</Comp>
 </template>
 `;
-    const result = await format("a.vue", input, {
+    const internal = await format("a.vue", input, {
       experimentalVueInternal: true,
     });
+    const external = await format("a.vue", input, {});
 
-    expect(result.code).toMatchSnapshot();
-    expect(result.errors).toStrictEqual([]);
+    expect(internal.errors).toStrictEqual([]);
+    expect(external.errors).toStrictEqual([]);
+    expect(internal.code).toBe(external.code);
   });
 
   it("should fallback to external formatter for unsupported custom SFC blocks", async () => {

@@ -347,6 +347,29 @@ impl SourceFormatter {
                 "internal Vue formatter does not support style blocks yet",
             ));
         }
+        if has_unsupported_multiline_open_tags_in_template(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support multiline template open tags yet",
+            ));
+        }
+        if has_unsupported_template_raw_style_tags(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support raw template style tags yet",
+            ));
+        }
+        if has_unsupported_typescript_template_expressions_without_ts_script(source_text) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support TypeScript template expressions without ts script blocks yet",
+            ));
+        }
+        if has_unsupported_dense_single_line_open_tags(
+            source_text,
+            usize::from(format_options.line_width.value()),
+        ) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support dense single-line template open tags yet",
+            ));
+        }
         if has_unsupported_template_lang_blocks(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support non-html template lang blocks yet",
@@ -365,6 +388,11 @@ impl SourceFormatter {
         if has_unsupported_multiline_directive_values(source_text) {
             return Err(OxcDiagnostic::error(
                 "internal Vue formatter does not support multiline directive attribute values yet",
+            ));
+        }
+        if self.has_unsupported_multiline_formatted_directive_values(source_text, &format_options) {
+            return Err(OxcDiagnostic::error(
+                "internal Vue formatter does not support directive expressions that expand to multiline output yet",
             ));
         }
         if self.has_unsupported_v_for_expressions(source_text, &format_options) {
@@ -406,6 +434,7 @@ impl SourceFormatter {
         for block in script_blocks.iter().rev() {
             let original = &source_text[block.content_start..block.content_end];
             if original.trim().is_empty() {
+                output.replace_range(block.content_start..block.content_end, "");
                 continue;
             }
 
@@ -456,7 +485,9 @@ impl SourceFormatter {
         let normalized = normalize_template_literal_placeholders(&normalized);
         let normalized = normalize_unindented_template_lines(&normalized, indent, line_ending);
         let normalized = normalize_simple_text_elements(&normalized, line_ending);
+        let normalized = collapse_consecutive_blank_template_lines(&normalized, line_ending);
         let normalized = normalize_single_root_template_layout(&normalized, line_ending, indent);
+        let normalized = normalize_self_closing_tag_spacing(&normalized);
         trim_template_trailing_whitespace(&normalized, line_ending)
     }
 
@@ -633,6 +664,81 @@ impl SourceFormatter {
                     {
                         return true;
                     }
+                }
+
+                idx = value_end + 1;
+            }
+
+            false
+        })
+    }
+
+    fn has_unsupported_multiline_formatted_directive_values(
+        &self,
+        source_text: &str,
+        format_options: &FormatOptions,
+    ) -> bool {
+        let template_blocks = super::vue_sfc::parse_template_blocks(source_text);
+
+        template_blocks.into_iter().any(|block| {
+            let content = &source_text[block.content_start..block.content_end];
+            let bytes = content.as_bytes();
+            let mut idx = 0usize;
+
+            while idx + 1 < bytes.len() {
+                if bytes[idx] != b'=' || !matches!(bytes[idx + 1], b'"' | b'\'') {
+                    idx += 1;
+                    continue;
+                }
+
+                let quote = bytes[idx + 1];
+                let mut name_start = idx;
+                while name_start > 0 {
+                    let ch = bytes[name_start - 1] as char;
+                    if ch.is_whitespace() || matches!(ch, '<' | '/') {
+                        break;
+                    }
+                    name_start -= 1;
+                }
+                let attr_name = &content[name_start..idx];
+
+                let value_start = idx + 2;
+                let mut value_end = value_start;
+                while value_end < bytes.len() {
+                    if bytes[value_end] == quote
+                        && (value_end == value_start || bytes[value_end - 1] != b'\\')
+                    {
+                        break;
+                    }
+                    value_end += 1;
+                }
+                if value_end >= bytes.len() {
+                    break;
+                }
+
+                let value = content[value_start..value_end].trim();
+                let decoded = decode_vue_expression_entities(value);
+                let maybe_formatted = if attr_name == "v-for" {
+                    self.format_vue_v_for_expression(&decoded, format_options)
+                } else if should_format_vue_binding_attribute(attr_name) {
+                    self.format_vue_binding_params(&decoded, format_options, false)
+                } else if should_format_vue_directive_attribute(attr_name) {
+                    let mut expression_options = format_options.clone();
+                    expression_options.quote_style = if quote == b'"' {
+                        QuoteStyle::Single
+                    } else {
+                        QuoteStyle::Double
+                    };
+                    self.format_vue_inline_expression(&decoded, &expression_options)
+                } else {
+                    None
+                };
+
+                if maybe_formatted
+                    .as_deref()
+                    .is_some_and(|formatted| formatted.contains('\n') || formatted.contains('\r'))
+                {
+                    return true;
                 }
 
                 idx = value_end + 1;
@@ -822,7 +928,7 @@ fn source_type_from_vue_script_lang(lang: Option<&str>) -> Option<SourceType> {
 fn wrap_formatted_vue_script(formatted: &str, line_ending: &str, indent: Option<&str>) -> String {
     let trimmed = formatted.trim_end();
     if trimmed.is_empty() {
-        return line_ending.to_string();
+        return String::new();
     }
 
     let mut output = String::new();
@@ -963,11 +1069,115 @@ fn normalize_simple_text_elements(input: &str, line_ending: &str) -> String {
 }
 
 fn is_simple_open_tag(line: &str) -> bool {
+    let Some(inner) = line.strip_prefix('<').and_then(|line| line.strip_suffix('>')) else {
+        return false;
+    };
+    let Some(attr_count) = count_tag_attributes(inner) else {
+        return false;
+    };
+    if attr_count > 1 {
+        return false;
+    }
+
     line.starts_with('<')
         && !line.starts_with("</")
         && !line.starts_with("<!")
         && !line.ends_with("/>")
         && line.ends_with('>')
+}
+
+fn count_tag_attributes(tag_contents: &str) -> Option<usize> {
+    let mut idx = 0usize;
+    let bytes = tag_contents.as_bytes();
+    while idx < bytes.len() {
+        let ch = bytes[idx] as char;
+        if ch.is_whitespace() || ch == '/' {
+            break;
+        }
+        idx += 1;
+    }
+    if idx == 0 {
+        return None;
+    }
+
+    let mut attr_count = 0usize;
+    let mut in_quote: Option<u8> = None;
+    while idx < bytes.len() {
+        while idx < bytes.len() && (bytes[idx] as char).is_whitespace() {
+            idx += 1;
+        }
+        if idx >= bytes.len() || bytes[idx] == b'/' {
+            break;
+        }
+
+        attr_count += 1;
+        while idx < bytes.len() {
+            let ch = bytes[idx];
+            if let Some(quote) = in_quote {
+                if ch == quote && (idx == 0 || bytes[idx - 1] != b'\\') {
+                    in_quote = None;
+                }
+                idx += 1;
+                continue;
+            }
+
+            match ch {
+                b'"' | b'\'' => in_quote = Some(ch),
+                _ if (ch as char).is_whitespace() => break,
+                _ => {}
+            }
+            idx += 1;
+        }
+    }
+
+    Some(attr_count)
+}
+
+fn collapse_consecutive_blank_template_lines(input: &str, line_ending: &str) -> String {
+    let mut output_lines = Vec::new();
+    let mut previous_blank = false;
+
+    for line in input.lines() {
+        let is_blank = line.trim().is_empty();
+        if is_blank && previous_blank {
+            continue;
+        }
+        output_lines.push(line);
+        previous_blank = is_blank;
+    }
+
+    let mut output = output_lines.join(line_ending);
+    if input.ends_with('\n') || input.ends_with('\r') {
+        output.push_str(line_ending);
+    }
+    output
+}
+
+fn normalize_self_closing_tag_spacing(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut idx = 0usize;
+    let bytes = input.as_bytes();
+
+    while idx < bytes.len() {
+        if bytes[idx] == b'/' && idx + 1 < bytes.len() && bytes[idx + 1] == b'>' {
+            if !output.ends_with([' ', '\n', '\r', '\t']) {
+                output.push(' ');
+            }
+            output.push('/');
+            output.push('>');
+            idx += 2;
+            continue;
+        }
+
+        let ch = input[idx..]
+            .chars()
+            .next()
+            .expect("index should always point to a char boundary");
+        output.push(ch);
+        idx += ch.len_utf8();
+    }
+
+    output
 }
 
 fn is_matching_close_tag(open: &str, close: &str) -> bool {
@@ -1146,16 +1356,99 @@ fn decode_vue_expression_entities(value: &str) -> String {
         return value.to_string();
     }
 
-    value
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
+    let value = value.replace("&apos;", "'");
+    let value = replace_entity_outside_single_quotes(&value, "&quot;", "\"");
+    let value = replace_entity_outside_single_quotes(&value, "&lt;", "<");
+    let value = replace_entity_outside_single_quotes(&value, "&gt;", ">");
+    replace_entity_outside_single_quotes(&value, "&amp;", "&")
+}
+
+fn replace_entity_outside_single_quotes(input: &str, entity: &str, replacement: &str) -> String {
+    if !input.contains(entity) {
+        return input.to_string();
+    }
+
+    let mut output = String::with_capacity(input.len());
+    let mut idx = 0usize;
+    let mut in_single_quote = false;
+    let mut escaped = false;
+
+    while idx < input.len() {
+        if !in_single_quote && input[idx..].starts_with(entity) {
+            output.push_str(replacement);
+            idx += entity.len();
+            continue;
+        }
+
+        let ch = input[idx..]
+            .chars()
+            .next()
+            .expect("index should always point to a char boundary");
+        output.push(ch);
+        idx += ch.len_utf8();
+
+        if in_single_quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '\'' {
+                in_single_quote = false;
+            }
+        } else if ch == '\'' {
+            in_single_quote = true;
+        }
+    }
+
+    output
 }
 
 fn has_style_blocks(source_text: &str) -> bool {
     !super::vue_sfc::parse_style_blocks(source_text).is_empty()
+}
+
+fn has_unsupported_multiline_open_tags_in_template(source_text: &str) -> bool {
+    super::vue_sfc::parse_template_blocks(source_text).into_iter().any(|block| {
+        let content = &source_text[block.content_start..block.content_end];
+        let bytes = content.as_bytes();
+
+        let mut in_tag = false;
+        let mut in_quote: Option<u8> = None;
+        let mut idx = 0usize;
+
+        while idx < bytes.len() {
+            let ch = bytes[idx];
+
+            if !in_tag {
+                if ch == b'<'
+                    && idx + 1 < bytes.len()
+                    && !matches!(bytes[idx + 1], b'/' | b'!' | b'?')
+                {
+                    in_tag = true;
+                }
+                idx += 1;
+                continue;
+            }
+
+            if let Some(quote) = in_quote {
+                if ch == quote && (idx == 0 || bytes[idx - 1] != b'\\') {
+                    in_quote = None;
+                }
+                idx += 1;
+                continue;
+            }
+
+            match ch {
+                b'"' | b'\'' => in_quote = Some(ch),
+                b'>' => in_tag = false,
+                b'\n' | b'\r' => return true,
+                _ => {}
+            }
+            idx += 1;
+        }
+
+        false
+    })
 }
 
 fn has_unsupported_template_lang_blocks(source_text: &str) -> bool {
@@ -1166,6 +1459,60 @@ fn has_unsupported_template_lang_blocks(source_text: &str) -> bool {
             let normalized = lang.trim().to_ascii_lowercase();
             !normalized.is_empty() && normalized != "html"
         })
+}
+
+fn has_unsupported_template_raw_style_tags(source_text: &str) -> bool {
+    super::vue_sfc::parse_template_blocks(source_text).into_iter().any(|block| {
+        let content = &source_text[block.content_start..block.content_end];
+        content.contains("<mj-style") || content.contains("<mj-raw")
+    })
+}
+
+fn has_unsupported_typescript_template_expressions_without_ts_script(source_text: &str) -> bool {
+    let has_typescript_script = super::vue_sfc::parse_script_blocks(source_text)
+        .into_iter()
+        .any(|block| {
+            block
+                .lang
+                .as_deref()
+                .map(|lang| matches!(lang.trim().to_ascii_lowercase().as_str(), "ts" | "tsx" | "typescript"))
+                .unwrap_or(false)
+        });
+    if has_typescript_script {
+        return false;
+    }
+
+    super::vue_sfc::parse_template_blocks(source_text).into_iter().any(|block| {
+        let content = &source_text[block.content_start..block.content_end];
+        content.contains(" as ")
+    })
+}
+
+fn has_unsupported_dense_single_line_open_tags(source_text: &str, print_width: usize) -> bool {
+    super::vue_sfc::parse_template_blocks(source_text).into_iter().any(|block| {
+        let content = &source_text[block.content_start..block.content_end];
+        content.lines().any(|line| {
+            let trimmed = line.trim();
+            if !trimmed.starts_with('<')
+                || trimmed.starts_with("</")
+                || trimmed.starts_with("<!")
+                || !trimmed.ends_with('>')
+                || trimmed.contains('\n')
+            {
+                return false;
+            }
+            if trimmed.len() <= print_width {
+                return false;
+            }
+
+            let Some(inner) = trimmed.strip_prefix('<').and_then(|line| line.strip_suffix('>'))
+            else {
+                return false;
+            };
+
+            count_tag_attributes(inner).is_some_and(|count| count > 1)
+        })
+    })
 }
 
 fn has_unsupported_custom_sfc_blocks(source_text: &str) -> bool {
@@ -1551,6 +1898,9 @@ mod tests {
 
         let wrapped = wrap_formatted_vue_script(code, "\n", Some("  "));
         assert_eq!(wrapped, "\n  const a = 1;\n  const b = 2;\n");
+
+        let wrapped = wrap_formatted_vue_script("", "\n", Some("  "));
+        assert_eq!(wrapped, "");
     }
 
     #[test]
@@ -1668,6 +2018,84 @@ ${foo}` }">{{ a }}</Comp>
     }
 
     #[test]
+    fn test_detects_unsupported_multiline_open_tags_in_template() {
+        let source = r#"
+<template>
+  <div
+    :foo="bar"
+  ></div>
+</template>
+"#;
+        assert!(super::has_unsupported_multiline_open_tags_in_template(source));
+    }
+
+    #[test]
+    fn test_allows_single_line_open_tags_in_template() {
+        let source = r#"
+<template>
+  <div :foo="bar"></div>
+</template>
+"#;
+        assert!(!super::has_unsupported_multiline_open_tags_in_template(source));
+    }
+
+    #[test]
+    fn test_detects_unsupported_template_raw_style_tags() {
+        let source = r#"
+<template>
+  <mj-style> .x { color: red }</mj-style>
+</template>
+"#;
+        assert!(super::has_unsupported_template_raw_style_tags(source));
+    }
+
+    #[test]
+    fn test_detects_unsupported_ts_template_expressions_without_ts_script() {
+        let source = r#"
+<script>
+const value = 1;
+</script>
+<template>
+  <p>{{ value as number }}</p>
+</template>
+"#;
+        assert!(super::has_unsupported_typescript_template_expressions_without_ts_script(source));
+    }
+
+    #[test]
+    fn test_allows_ts_template_expressions_with_ts_script() {
+        let source = r#"
+<script lang="ts">
+const value = 1 as number;
+</script>
+<template>
+  <p>{{ value as number }}</p>
+</template>
+"#;
+        assert!(!super::has_unsupported_typescript_template_expressions_without_ts_script(source));
+    }
+
+    #[test]
+    fn test_detects_unsupported_dense_single_line_open_tags() {
+        let source = r#"
+<template>
+  <div data-a="Lorem ipsum dolor sit amet" data-b="Lorem ipsum dolor sit amet" data-c="Lorem ipsum dolor sit amet">Hello</div>
+</template>
+"#;
+        assert!(super::has_unsupported_dense_single_line_open_tags(source, 80));
+    }
+
+    #[test]
+    fn test_allows_short_single_line_open_tags() {
+        let source = r#"
+<template>
+  <div data-a="1" data-b="2">Hello</div>
+</template>
+"#;
+        assert!(!super::has_unsupported_dense_single_line_open_tags(source, 80));
+    }
+
+    #[test]
     fn test_detects_unsupported_template_lang_blocks() {
         let source = r#"
 <template lang="pug">
@@ -1739,6 +2167,37 @@ ${foo}` }">{{ a }}</Comp>
     }
 
     #[test]
+    fn test_detects_formatted_multiline_directive_values() {
+        let formatter = SourceFormatter::new(1);
+        let source = r#"
+<script lang="ts"></script>
+<template>
+  <comp :foo="<X extends Something & AnothoerOne, Y extends unknown[]>(x:X,y:Y)=>y.length + x.foobar.abcdefg"/>
+</template>
+"#;
+        assert!(
+            formatter
+                .has_unsupported_multiline_formatted_directive_values(
+                    source,
+                    &FormatOptions::default()
+                )
+        );
+    }
+
+    #[test]
+    fn test_allows_single_line_formatted_directive_values() {
+        let formatter = SourceFormatter::new(1);
+        let source = r#"<template><div :foo="a+b" /></template>"#;
+        assert!(
+            !formatter
+                .has_unsupported_multiline_formatted_directive_values(
+                    source,
+                    &FormatOptions::default()
+                )
+        );
+    }
+
+    #[test]
     fn test_detects_unsupported_v_for_expressions() {
         let formatter = SourceFormatter::new(1);
         let source = r#"
@@ -1779,6 +2238,34 @@ ${foo}` }">{{ a }}</Comp>
     }
 
     #[test]
+    fn test_does_not_inline_text_elements_with_attributes() {
+        let source = "  <div a=\"x\" b=\"y\">\n    hello\n  </div>\n";
+        let normalized = super::normalize_simple_text_elements(source, "\n");
+        assert_eq!(normalized, source);
+    }
+
+    #[test]
+    fn test_inlines_text_elements_with_single_attribute() {
+        let source = "  <div class=\"x\">\n    hello\n  </div>\n";
+        let normalized = super::normalize_simple_text_elements(source, "\n");
+        assert_eq!(normalized, "  <div class=\"x\">hello</div>\n");
+    }
+
+    #[test]
+    fn test_collapse_consecutive_blank_template_lines() {
+        let source = "  <div></div>\n\n\n  <span></span>\n";
+        let normalized = super::collapse_consecutive_blank_template_lines(source, "\n");
+        assert_eq!(normalized, "  <div></div>\n\n  <span></span>\n");
+    }
+
+    #[test]
+    fn test_normalize_self_closing_tag_spacing() {
+        let source = "<template>\n  <br/>\n  <img src=\"x\"/>\n</template>\n";
+        let normalized = super::normalize_self_closing_tag_spacing(source);
+        assert_eq!(normalized, "<template>\n  <br />\n  <img src=\"x\" />\n</template>\n");
+    }
+
+    #[test]
     fn test_trim_extra_trailing_line_endings() {
         let input = "<template></template>\n\n".to_string();
         let trimmed = super::trim_extra_trailing_line_endings(input, "\n");
@@ -1790,6 +2277,13 @@ ${foo}` }">{{ a }}</Comp>
         let value = "&quot;list-&quot; + &apos;x&apos; + &lt;tag&gt; + &amp;foo";
         let decoded = super::decode_vue_expression_entities(value);
         assert_eq!(decoded, "\"list-\" + 'x' + <tag> + &foo");
+    }
+
+    #[test]
+    fn test_preserve_quoted_quot_entity_inside_single_quotes() {
+        let value = "&apos;&quot;&apos; + id";
+        let decoded = super::decode_vue_expression_entities(value);
+        assert_eq!(decoded, "'&quot;' + id");
     }
 
     #[test]
